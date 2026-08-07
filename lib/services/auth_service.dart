@@ -1,0 +1,285 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import 'otp_api.dart';
+
+/// Outcome of a login / registration attempt.
+sealed class AuthResult {
+  const AuthResult();
+}
+
+class AuthSuccess extends AuthResult {
+  const AuthSuccess({this.user});
+  final User? user;
+}
+
+class AuthFailure extends AuthResult {
+  const AuthFailure(this.message);
+  final String message;
+}
+
+/// Thrown by OTP / password-recovery methods with a user-friendly message.
+class AuthException implements Exception {
+  const AuthException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Contract for all auth operations used by the screens.
+abstract class AuthService {
+  /// The currently signed-in Firebase user, or null when not signed in.
+  User? get currentUser;
+
+  /// Signs the current user out (no-op when no one is signed in).
+  Future<void> signOut();
+
+  Future<AuthResult> login({required String email, required String password});
+
+  Future<AuthResult> register({
+    required String fullName,
+    required String email,
+    required String password,
+  });
+
+  /// Resends the signup OTP to the given email.
+  Future<void> resendSignupOtp(String email);
+
+  /// Verifies the signup OTP for the given email and marks it verified.
+  Future<void> verifyEmailOtp({
+    required String email,
+    required String otp,
+  });
+
+  Future<void> sendPasswordResetOtp(String email);
+
+  /// Sends a change-password OTP to the given email.
+  Future<void> sendChangePasswordOtp(String email);
+
+  /// Verifies the change-password OTP for the given email.
+  Future<void> verifyChangePasswordOtp({
+    required String email,
+    required String otp,
+  });
+
+  /// Applies a new password after the change-password OTP was verified.
+  Future<void> changePassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  });
+
+  Future<void> verifyPasswordResetOtp({
+    required String email,
+    required String otp,
+  });
+
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  });
+}
+
+class FirebaseAuthService implements AuthService {
+  FirebaseAuthService({FirebaseAuth? auth, OtpApi? otpApi})
+      : _authOverride = auth,
+        _otp = otpApi ?? FirebaseOtpApi();
+
+  /// Allows tests to inject a mock instance.
+  final FirebaseAuth? _authOverride;
+  final OtpApi _otp;
+
+  /// Resolved lazily so the constructor never throws, even when Firebase has
+  /// not been initialized on the current platform.
+  FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
+
+  bool get _firebaseReady => _authOverride != null || Firebase.apps.isNotEmpty;
+
+  static const String _notConfigured =
+      'Firebase is not configured on this platform yet.';
+
+  @override
+  User? get currentUser {
+    if (!_firebaseReady) return null;
+    return _auth.currentUser;
+  }
+
+  @override
+  Future<void> signOut() async {
+    if (_firebaseReady) {
+      await _auth.signOut();
+    }
+  }
+
+  @override
+  Future<AuthResult> login({
+    required String email,
+    required String password,
+  }) async {
+    if (!_firebaseReady) {
+      return const AuthFailure(_notConfigured);
+    }
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      return const AuthSuccess();
+    } on FirebaseAuthException catch (e) {
+      return AuthFailure(_authErrorToMessage(e));
+    } catch (_) {
+      return const AuthFailure('Something went wrong. Please try again.');
+    }
+  }
+
+  @override
+  Future<AuthResult> register({
+    required String fullName,
+    required String email,
+    required String password,
+  }) async {
+    if (!_firebaseReady) {
+      return const AuthFailure(_notConfigured);
+    }
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      final user = credential.user;
+      if (user != null) {
+        await user.updateDisplayName(fullName.trim());
+      }
+      return AuthSuccess(user: user);
+    } on FirebaseAuthException catch (e) {
+      return AuthFailure(_authErrorToMessage(e));
+    } catch (_) {
+      return const AuthFailure('Something went wrong. Please try again.');
+    }
+  }
+
+  @override
+  Future<void> resendSignupOtp(String email) async {
+    try {
+      await _otp.sendSignupOtp(email);
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> verifyEmailOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      await _otp.verifySignupOtp(email: email, otp: otp);
+      final user = _authOverride != null || Firebase.apps.isNotEmpty
+          ? _auth.currentUser
+          : null;
+      if (user != null) {
+        await user.reload();
+      }
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> sendPasswordResetOtp(String email) async {
+    try {
+      await _otp.sendPasswordResetOtp(email);
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> verifyPasswordResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      await _otp.verifyPasswordResetOtp(email: email, otp: otp);
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> sendChangePasswordOtp(String email) async {
+    try {
+      await _otp.sendChangePasswordOtp(email);
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> verifyChangePasswordOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      await _otp.verifyChangePasswordOtp(email: email, otp: otp);
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> changePassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    try {
+      await _otp.changePassword(
+        email: email,
+        otp: otp,
+        newPassword: newPassword,
+      );
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    try {
+      await _otp.resetPassword(email: email, otp: otp, newPassword: newPassword);
+    } on OtpApiException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
+
+  String _authErrorToMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'user-not-found':
+        return 'No account found with this email address.';
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Incorrect email or password.';
+      case 'email-already-in-use':
+        return 'An account with this email already exists.';
+      case 'weak-password':
+        return 'Password is too weak. Please use at least 8 characters.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      case 'network-request-failed':
+        return 'Network error. Check your connection and try again.';
+      default:
+        return e.message ?? 'Something went wrong. Please try again.';
+    }
+  }
+}
