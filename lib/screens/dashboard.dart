@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/chatbot.dart';
 import 'auth/change_password_screen.dart';
 import 'auth/login.dart';
 
@@ -110,6 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           onChangePassword: _goToChangePassword,
           onSignOut: _signOut,
         ),
+        const ChatbotButton(),
         if (_welcomeVisible) _buildWelcomeOverlay(displayName),
       ],
     );

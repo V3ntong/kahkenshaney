@@ -6,7 +6,7 @@ import '../widgets/bottom_nav.dart';
 import '../widgets/keep_alive_wrapper.dart';
 import '../widgets/tab_switcher.dart';
 import 'home_feed.dart';
-import 'item_list_page.dart';
+import 'items_grid_page.dart';
 import 'messages_page.dart';
 import 'reports_page.dart';
 
@@ -44,11 +44,12 @@ class _HomePageState extends State<HomePage> {
       ),
     ),
     KeepAliveWrapper(
-      child: ItemsListPage(
+      child: ItemsGridPage(
         kind: ItemKind.lost,
-        title: 'Lost',
-        subtitle: 'Items reported as lost',
-        accent: AppColors.error,
+        bannerTitle: 'Lost Items',
+        bannerSubtitle: 'Browse items others have reported missing',
+        ctaLabel: 'Report Lost Item',
+        onCtaTap: () => Navigator.pushNamed(context, '/report-lost'),
         emptyIcon: Icons.search_off_rounded,
         emptyTitle: 'Nothing lost yet',
         emptyMessage:
@@ -57,11 +58,12 @@ class _HomePageState extends State<HomePage> {
     ),
     const KeepAliveWrapper(child: ReportsPage()),
     KeepAliveWrapper(
-      child: ItemsListPage(
+      child: ItemsGridPage(
         kind: ItemKind.found,
-        title: 'Found',
-        subtitle: 'Items reported as found',
-        accent: AppColors.success,
+        bannerTitle: 'Found Items',
+        bannerSubtitle: 'Help reunite found items with their owners',
+        ctaLabel: 'Found an Item?',
+        onCtaTap: () => Navigator.pushNamed(context, '/submit-found'),
         emptyIcon: Icons.inventory_2_rounded,
         emptyTitle: 'Nothing found yet',
         emptyMessage:

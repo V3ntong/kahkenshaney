@@ -4,7 +4,7 @@ module.exports = {
     node: true,
   },
   parserOptions: {
-    "ecmaVersion": 2018,
+    "ecmaVersion": 2022,
   },
   extends: [
     "eslint:recommended",
@@ -15,6 +15,10 @@ module.exports = {
     "prefer-arrow-callback": "error",
     "quotes": ["error", "double", {"allowTemplateLiterals": true}],
   },
+  ignorePatterns: [
+    "lib/**",
+    "node_modules/**",
+  ],
   overrides: [
     {
       files: ["**/*.spec.*"],
