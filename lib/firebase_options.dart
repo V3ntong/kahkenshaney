@@ -40,7 +40,7 @@ class DefaultFirebaseOptions {
   // Android configuration from google-services.json.
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDbveD4ZUKOHdpiBZMOQR69A-Fc5MJFQWg',
-    appId: '1:584709649247:android:61837035cf17c6af62bcea',
+    appId: '1:584709649247:android:c9c4da7c99cf56f562bcea',
     messagingSenderId: '584709649247',
     projectId: 'firstfirebase-5880d',
     storageBucket: 'firstfirebase-5880d.firebasestorage.app',

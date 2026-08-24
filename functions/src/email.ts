@@ -1,8 +1,8 @@
 import * as nodemailer from 'nodemailer';
 import { renderEmailTemplate } from './templates';
 
-const APP_NAME = process.env.APP_NAME ?? 'KAH KEN SHA NEY';
-const MAIL_FROM = process.env.MAIL_FROM ?? 'no-reply@localhost';
+const APP_NAME = (process.env.APP_NAME ?? 'KAH KEN SHA NEY').trim();
+const MAIL_FROM = (process.env.MAIL_FROM ?? 'no-reply@localhost').trim();
 
 /** Set to "true" by the Firebase Functions emulator. */
 const IS_EMULATOR = process.env.FUNCTIONS_EMULATOR === 'true';
@@ -12,7 +12,7 @@ let transporter: nodemailer.Transporter | null = null;
 function getTransporter(): nodemailer.Transporter {
   if (transporter) return transporter;
 
-  const host = process.env.SMTP_HOST;
+  const host = (process.env.SMTP_HOST ?? '').trim();
   if (!host) {
     const missing: string[] = [];
     if (!process.env.SMTP_HOST) missing.push('SMTP_HOST');
@@ -57,15 +57,18 @@ function getTransporter(): nodemailer.Transporter {
     );
   }
 
-  const port = Number(process.env.SMTP_PORT ?? '587');
-  const secure = (process.env.SMTP_SECURE ?? 'false') === 'true';
+  const port = Number((process.env.SMTP_PORT ?? '587').trim());
+  const secure = (process.env.SMTP_SECURE ?? 'false').trim() === 'true';
+
+  const smtpUser = (process.env.SMTP_USER ?? '').trim();
+  const smtpPass = (process.env.SMTP_PASS ?? '').trim();
 
   transporter = nodemailer.createTransport({
     host,
     port,
     secure,
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    auth: smtpUser
+      ? { user: smtpUser, pass: smtpPass }
       : undefined,
   });
 

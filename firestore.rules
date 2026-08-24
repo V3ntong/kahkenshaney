@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper: check if user is admin ──────────────────────────────────
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // ── items ────────────────────────────────────────────────────────────
+    match /items/{itemId} {
+      // Read: approved items visible to all; owner sees own items; admin sees all
+      allow read: if request.auth != null
+        && (resource.data.moderationStatus == 'approved'
+            || resource.data.ownerUid == request.auth.uid
+            || isAdmin());
+
+      // Create: authenticated user can create their own items (auto-set pending)
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+
+      // Update: admin can update moderationStatus + status; owner can update other fields
+      allow update: if request.auth != null
+        && (isAdmin()
+            || (resource.data.ownerUid == request.auth.uid
+                && !request.resource.data.diff(resource.data)
+                     .affectedKeys().hasAny(['moderationStatus', 'status'])));
+
+      // Delete: owner or admin
+      allow delete: if request.auth != null
+        && (resource.data.ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // ── users ────────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
+      allow delete: if false;
+    }
+
+    // ── users/{uid}/notifications ────────────────────────────────────────
+    match /users/{userId}/notifications/{notificationId} {
+      // Only the user can read their own notifications; admin can read all
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+
+      // Admin or Cloud Function can create notifications
+      allow create: if request.auth != null && isAdmin();
+
+      // Only the user can mark their own notifications as read
+      allow update: if request.auth != null
+        && request.auth.uid == userId;
+
+      // No deletion allowed
+      allow delete: if false;
+    }
+
+    // ── chats (1-on-1 support messages) ─────────────────────────────────
+    match /chats/{chatId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == chatId || isAdmin());
+
+      allow create: if request.auth != null
+        && request.auth.uid == chatId;
+
+      allow update: if request.auth != null
+        && (request.auth.uid == chatId || isAdmin());
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+          && (request.auth.uid == chatId || isAdmin());
+
+        allow create: if request.auth != null
+          && (request.auth.uid == chatId || isAdmin())
+          && request.resource.data.senderId == request.auth.uid;
+
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+  }
+}

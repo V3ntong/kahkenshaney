@@ -82,10 +82,20 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {});
     _scrollToBottom();
 
-    await _chatService.sendMessage(text);
+    final reply = await _chatService.sendMessage(text);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
+
+    // Show the returned text even when it's an error/empty response.
+    // sendMessage only records successful model replies in history, so
+    // without this the UI would silently drop every non-200 reply.
+    final history = _chatService.history;
+    if (reply.isNotEmpty &&
+        (history.isEmpty || history.last.text != reply)) {
+      _chatService.addAssistantMessage(reply);
+      setState(() {});
+    }
     _scrollToBottom();
   }
 
@@ -379,18 +389,14 @@ class _TypingIndicator extends StatefulWidget {
 class _TypingIndicatorState extends State<_TypingIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1500),
     )..repeat();
-    _animation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
   }
 
   @override
@@ -405,50 +411,67 @@ class _TypingIndicatorState extends State<_TypingIndicator>
       alignment: Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(left: 16, bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: AppColors.surfaceVariant,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.cardBorder),
         ),
         child: AnimatedBuilder(
-          animation: _animation,
+          animation: _controller,
           builder: (context, _) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _Dot(delay: 0, progress: _animation.value),
-                const SizedBox(width: 4),
-                _Dot(delay: 0.2, progress: _animation.value),
-                const SizedBox(width: 4),
-                _Dot(delay: 0.4, progress: _animation.value),
-              ],
+            return ShaderMask(
+              shaderCallback: (bounds) {
+                return LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: const [
+                    AppColors.surfaceVariant,
+                    AppColors.cardBorder,
+                    AppColors.surfaceVariant,
+                  ],
+                  stops: [
+                    (_controller.value - 0.3).clamp(0.0, 1.0),
+                    _controller.value,
+                    (_controller.value + 0.3).clamp(0.0, 1.0),
+                  ],
+                ).createShader(bounds);
+              },
+              blendMode: BlendMode.srcATop,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 10,
+                    width: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 10,
+                    width: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 10,
+                    width: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot({required this.delay, required this.progress});
-
-  final double delay;
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    final adjusted = (progress + delay) % 1.0;
-    final opacity = (adjusted < 0.5 ? adjusted * 2 : (1 - adjusted) * 2).clamp(0.3, 1.0);
-    return Opacity(
-      opacity: opacity,
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: const BoxDecoration(
-          color: AppColors.textTertiary,
-          shape: BoxShape.circle,
         ),
       ),
     );

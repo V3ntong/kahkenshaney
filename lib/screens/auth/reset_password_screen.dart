@@ -83,9 +83,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               message:
                   'Your password has been changed successfully. Keep it safe!',
               buttonLabel: 'Back to Dashboard',
-              onPressed: () {
+              onPressed: (ctx) {
                 Navigator.pushAndRemoveUntil(
-                  context,
+                  ctx,
                   FadeThroughRoute(
                     builder: (_) =>
                         DashboardScreen(authService: widget.authService),
@@ -106,9 +106,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   'Your password has been updated successfully. You can now '
                   'sign in with your new password.',
               buttonLabel: 'Go to Login',
-              onPressed: () {
+              onPressed: (ctx) {
                 Navigator.pushReplacement(
-                  context,
+                  ctx,
                   FadeThroughRoute(
                     builder: (_) => const LoginScreen(),
                   ),

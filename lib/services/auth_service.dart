@@ -3,6 +3,24 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'otp_api.dart';
 
+/// The email address granted access to the Admin Dashboard.
+///
+/// Replace with the real admin email. This is the single source of truth
+/// used both by the post-login redirect and the admin dashboard guard.
+const String kAdminEmail = 'mugiwaranomelvin@gmail.com';
+
+/// The UID of the admin account used for support chats.
+///
+/// This must match the Firebase Auth UID of the admin account.
+/// Update this value after the admin account is created.
+const String kAdminUid = 'REPLACE_WITH_ADMIN_UID';
+
+/// Whether [email] matches the designated admin email (case-insensitive).
+bool isAdminEmail(String? email) {
+  if (email == null) return false;
+  return email.trim().toLowerCase() == kAdminEmail.trim().toLowerCase();
+}
+
 /// Outcome of a login / registration attempt.
 sealed class AuthResult {
   const AuthResult();
@@ -31,6 +49,12 @@ class AuthException implements Exception {
 abstract class AuthService {
   /// The currently signed-in Firebase user, or null when not signed in.
   User? get currentUser;
+
+  /// Whether a user is currently signed in.
+  bool get isAuthenticated => currentUser != null;
+
+  /// Whether the currently signed-in user is the designated admin email.
+  bool get isAdminAuthenticated => isAdminEmail(currentUser?.email);
 
   /// Signs the current user out (no-op when no one is signed in).
   Future<void> signOut();
@@ -107,6 +131,12 @@ class FirebaseAuthService implements AuthService {
   }
 
   @override
+  bool get isAuthenticated => currentUser != null;
+
+  @override
+  bool get isAdminAuthenticated => isAdminEmail(currentUser?.email);
+
+  @override
   Future<void> signOut() async {
     if (_firebaseReady) {
       await _auth.signOut();
@@ -155,8 +185,11 @@ class FirebaseAuthService implements AuthService {
       return AuthSuccess(user: user);
     } on FirebaseAuthException catch (e) {
       return AuthFailure(_authErrorToMessage(e));
-    } catch (_) {
-      return const AuthFailure('Something went wrong. Please try again.');
+    } catch (e) {
+      print('[AuthService] register unexpected error: $e');
+      return const AuthFailure(
+        'Something went wrong during registration. Please try again.',
+      );
     }
   }
 
@@ -176,12 +209,6 @@ class FirebaseAuthService implements AuthService {
   }) async {
     try {
       await _otp.verifySignupOtp(email: email, otp: otp);
-      final user = _authOverride != null || Firebase.apps.isNotEmpty
-          ? _auth.currentUser
-          : null;
-      if (user != null) {
-        await user.reload();
-      }
     } on OtpApiException catch (e) {
       throw AuthException(e.message);
     }

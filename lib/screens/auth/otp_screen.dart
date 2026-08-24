@@ -11,6 +11,7 @@ import '../../widgets/app_alert.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/otp_input.dart';
+import '../../data/firestore/database_service.dart';
 import '../dashboard.dart';
 import 'reset_password_screen.dart';
 
@@ -25,11 +26,15 @@ class OtpScreen extends StatefulWidget {
     super.key,
     required this.email,
     required this.purpose,
+    this.fullName,
+    this.password,
     this.authService,
   });
 
   final String email;
   final OtpPurpose purpose;
+  final String? fullName;
+  final String? password;
   final AuthService? authService;
 
   @override
@@ -78,6 +83,28 @@ class _OtpScreenState extends State<OtpScreen> {
       switch (widget.purpose) {
         case OtpPurpose.verifyEmail:
           await _auth.verifyEmailOtp(email: widget.email, otp: _code);
+          final registerResult = await _auth.register(
+            fullName: widget.fullName ?? '',
+            email: widget.email,
+            password: widget.password ?? '',
+          );
+          if (!mounted) return;
+          if (registerResult is AuthFailure) {
+            setState(() => _error = registerResult.message);
+            return;
+          }
+          final user = _auth.currentUser;
+          if (user != null) {
+            try {
+              await DatabaseService().createUserProfile(
+                uid: user.uid,
+                email: widget.email,
+                displayName: widget.fullName ?? '',
+              );
+            } catch (_) {
+              // Profile creation is best-effort — account is already active.
+            }
+          }
           if (!mounted) return;
           Navigator.pushAndRemoveUntil(
             context,
@@ -117,6 +144,10 @@ class _OtpScreenState extends State<OtpScreen> {
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
+    } catch (e) {
+      debugPrint('[OtpScreen] _verify unexpected error: $e');
+      if (!mounted) return;
+      setState(() => _error = 'Something went wrong. Please try again.');
     } finally {
       if (mounted) setState(() => _verifying = false);
     }

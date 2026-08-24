@@ -49,6 +49,17 @@ class ItemGridCard extends StatelessWidget {
                   ? Image.network(
                       item.media.first,
                       fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          color: accentSurface,
+                          alignment: Alignment.center,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        );
+                      },
                       errorBuilder: (_, _, _) => _Placeholder(
                         accent: accent,
                         surface: accentSurface,
@@ -63,68 +74,73 @@ class ItemGridCard extends StatelessWidget {
             ),
 
             // ── Details ────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Item name
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-
-                  // Description (truncated)
-                  if (item.description.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Item name
                     Text(
-                      item.description,
-                      maxLines: 2,
+                      item.title,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        height: 1.3,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
                       ),
                     ),
-                  ],
 
-                  const SizedBox(height: 6),
-
-                  // Location + time
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.place_outlined,
-                        size: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(
+                    // Description (truncated)
+                    if (item.description.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Flexible(
                         child: Text(
-                          location.isNotEmpty ? location : 'No location',
-                          maxLines: 1,
+                          item.description,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textTertiary,
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            height: 1.3,
                           ),
                         ),
                       ),
                     ],
-                  ),
 
-                  const SizedBox(height: 4),
+                    const SizedBox(height: 6),
 
-                  // Status pill
-                  _StatusPill(status: item.status),
-                ],
+                    // Location + time
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.place_outlined,
+                          size: 12,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            location.isNotEmpty ? location : 'No location',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const Spacer(),
+
+                    // Status pill
+                    _StatusPill(status: item.status),
+                  ],
+                ),
               ),
             ),
           ],
@@ -169,7 +185,10 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (status) {
       ItemStatus.open => ('OPEN', AppColors.success, AppColors.successSurface),
+      ItemStatus.pendingVerification => ('PENDING', AppColors.warning, AppColors.warningSurface),
+      ItemStatus.verified => ('VERIFIED', AppColors.info, AppColors.infoSurface),
       ItemStatus.matched => ('MATCHED', AppColors.primary, AppColors.infoSurface),
+      ItemStatus.claimed => ('CLAIMED', AppColors.success, AppColors.successSurface),
       ItemStatus.closed => ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
     };
     return Container(

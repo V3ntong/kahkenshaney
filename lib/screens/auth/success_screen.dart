@@ -16,7 +16,7 @@ class SuccessScreen extends StatelessWidget {
   final String title;
   final String message;
   final String buttonLabel;
-  final VoidCallback onPressed;
+  final void Function(BuildContext context) onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +60,7 @@ class SuccessScreen extends StatelessWidget {
         AppButton(
           label: buttonLabel,
           icon: Icons.arrow_forward_rounded,
-          onPressed: onPressed,
+          onPressed: () => onPressed(context),
         ),
       ],
     );

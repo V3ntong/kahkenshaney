@@ -79,3 +79,60 @@ void showAppSnackBar(
       ),
     );
 }
+
+/// Shows a modal dialog with a title, message and a single OK button.
+///
+/// Used for important alerts that require the user's attention, such as
+/// "Email Not Found" during authentication flows.
+Future<void> showAppDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String buttonLabel = 'OK',
+  IconData icon = Icons.info_outline_rounded,
+  Color? iconColor,
+}) {
+  return showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      icon: Icon(
+        icon,
+        size: 40,
+        color: iconColor ?? AppColors.primary,
+      ),
+      title: Text(
+        title,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      content: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 14,
+          height: 1.5,
+          color: AppColors.textSecondary,
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+          ),
+          child: Text(buttonLabel),
+        ),
+      ],
+    ),
+  );
+}

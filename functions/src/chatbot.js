@@ -7,9 +7,9 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const SYSTEM_INSTRUCTION =
-  "You are an official assistant for the AmongApp " +
-  "(KAH KEN SHA NEY) mobile application — an AI-Powered " +
-  "Lost & Found app. Your *only* task is to explain app " +
+  "You are the official AI assistant for KAH KEN SHA NEY " +
+  "— an AI and ML-powered application that turns your lost " +
+  "into found. Your *only* task is to explain app " +
   "features, give instructions, and share details based " +
   "on the project documentation. If a user asks about " +
   "anything else, politely decline and steer them back " +
@@ -22,7 +22,24 @@ const SYSTEM_INSTRUCTION =
   "User Authentication — email/password + OTP. " +
   "Real-time Updates — live Firestore streams. " +
   "Profile Management — view profile, change password. " +
-  "Messages — chat with finders (coming soon).";
+  "Messages — chat with finders (coming soon). " +
+  "Developer Information: " +
+  "KAH KEN SHA NEY was developed by Melvin Maquilan, " +
+  "Cristian Jim Pogoy, Axl Moraleja, and Aldrian Dajes — " +
+  "3rd-year BSCS (Bachelor of Science in Computer Science) " +
+  "students at SMCTI. " +
+  "Developer questions must be answered briefly and " +
+  "completely. When asked who developed, created, made, " +
+  "built, or is behind KAH KEN SHA NEY or this assistant, respond " +
+  "with exactly the verified developer information above. " +
+  "Do not omit any developer names. Do not start with " +
+  "unnecessary phrases such as 'I am the Official AI " +
+  "assistant' or 'Hello!'. Do not use Markdown bold or " +
+  "bullet lists. Use plain text only: " +
+  "KAH KEN SHA NEY was developed by Melvin Maquilan, " +
+  "Cristian Jim Pogoy, Axl Moraleja, and Aldrian Dajes. " +
+  "They are 3rd-year BSCS students at SMCTI. " +
+  "Do not invent additional information about the developers.";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 20;
@@ -107,7 +124,7 @@ exports.kashtep = onRequest(
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
-          model: "gemini-2.0-flash",
+          model: "gemini-3.6-flash",
           systemInstruction: SYSTEM_INSTRUCTION,
         });
 
@@ -117,7 +134,7 @@ exports.kashtep = onRequest(
             parts: [{text: msg.text}],
           })),
           generationConfig: {
-            maxOutputTokens: 500,
+            maxOutputTokens: 2048,
             temperature: 0.4,
           },
         });

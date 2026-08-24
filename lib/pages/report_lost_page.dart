@@ -86,11 +86,20 @@ class _ReportLostPageState extends State<ReportLostPage> {
         final repository = widget.repository ?? ItemRepository();
         final storageService =
             widget.storageService ?? StorageService();
-        final media = await storageService.uploadItemPhotos(
+        final results = await storageService.uploadItemPhotos(
+          folder: 'lost',
           itemId: item.id,
           images: _photos,
         );
-        await repository.addItem(item.copyWith(media: media));
+        final urls = results.map((r) => r.url).toList();
+        final primaryResult = results.isNotEmpty ? results.first : null;
+        await repository.addItem(
+          item.copyWith(
+            media: urls,
+            imageUrl: primaryResult?.url,
+            storagePath: primaryResult?.path,
+          ),
+        );
       }
 
       if (!mounted) return;

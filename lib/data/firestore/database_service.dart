@@ -107,6 +107,7 @@ class DatabaseService {
   /// Create or overwrite a user profile in the `users` collection.
   ///
   /// Uses [SetOptions(merge: true)] so existing fields are not overwritten.
+  /// Automatically sets `isAdmin: true` for the designated admin email.
   Future<void> createUserProfile({
     required String uid,
     required String email,
@@ -114,10 +115,15 @@ class DatabaseService {
     String role = 'user',
   }) async {
     try {
+      // Check if this email is the admin email.
+      final isAdmin = email.trim().toLowerCase() ==
+          'mugiwaranomelvin@gmail.com'.toLowerCase();
+
       await _db.collection('users').doc(uid).set({
         'email': email,
         'displayName': displayName ?? '',
         'role': role,
+        'isAdmin': isAdmin,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));

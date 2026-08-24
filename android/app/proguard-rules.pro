@@ -11,3 +11,14 @@
 
 # Cloud Functions
 -keep class com.kahkenshaney.amongapp.** { *; }
+
+# Play Core classes referenced by Flutter's optional deferred-components engine
+# (PlayStoreDeferredComponentManager / FlutterPlayStoreSplitApplication). This app
+# uses no dynamic features, so these classes are never touched at runtime. The
+# monolithic com.google.android.play:core artifact conflicts with core-common
+# (pulled by firebase-auth via play-integrity), and the modular split artifacts
+# are not on Google Maven, so R8 is told not to resolve them. This matches the
+# keep rules Android generates in missing_rules.txt.
+-dontwarn com.google.android.play.core.splitcompat.**
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**

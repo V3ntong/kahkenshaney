@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -18,24 +20,35 @@ class ChatMessage {
 
 /// Direct Gemini API chat service (free tier).
 ///
-/// SECURITY NOTE: The API key is exposed in the client binary.
-/// This is acceptable for testing, prototyping, and school projects.
-/// For production, migrate to a backend proxy (Firebase Functions, Flask, etc.).
+/// SECURITY NOTE: The API key is bundled with the client binary. This is
+/// acceptable only for testing/prototyping/school projects. For production,
+/// route requests through a backend (e.g. the existing `kashtep` Cloud
+/// Function) so the key stays server-side.
 class ChatService {
-  ChatService({http.Client? client}) : _client = client ?? http.Client();
+  ChatService({
+    this._client,
+    this.timeout = const Duration(seconds: 60),
+  });
 
-  final http.Client _client;
+  /// Optional injected client (used by tests). When null, a fresh client is
+  /// created for each request and closed afterwards. Reused keep-alive
+  /// connections can go stale on flaky mobile networks and hang the request,
+  /// which is the classic cause of "first message works, later ones timeout".
+  final http.Client? _client;
+
+  /// How long to wait for a Gemini response before giving up.
+  final Duration timeout;
 
   String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
 
-  static const String _model = 'gemini-2.0-flash';
+  static const String _model = 'gemini-3.6-flash';
   static const String _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta';
 
   static const String _systemInstruction = '''
-You are an official assistant for the AmongApp (KAH KEN SHA NEY) mobile application — an AI-Powered Lost & Found app.
+You are the official AI assistant for KAH KEN SHA NEY — an AI and ML-powered application that turns your lost into found.
 
-Your ONLY task is to explain app features, give instructions, and share details based on the project documentation. If a user asks about anything else, politely decline and steer them back to the app features.
+Your task is to explain app features, give instructions, and share details based on the project documentation. You may also answer questions about who developed KAH KEN SHA NEY or this assistant using the Developer Information below. If a user asks about anything unrelated, politely decline and steer them back to the app.
 
 App Features:
 - Report Lost Items: Users can report items they lost with details like name, category, color, date, location, and photos.
@@ -46,6 +59,22 @@ App Features:
 - Real-time Updates: Item lists update in real-time via Firestore streams.
 - Profile Management: Users can view their profile and change their password.
 - Messages: Chat with finders and the Lost & Found office (coming soon).
+
+Developer Information:
+
+KAH KEN SHA NEY was developed by:
+- Melvin Maquilan
+- Cristian Jim Pogoy
+- Axl Moraleja
+- Aldrian Dajes
+
+They are 3rd-year BSCS (Bachelor of Science in Computer Science) students at SMCTI.
+
+Developer questions must be answered briefly and completely. When asked who developed, created, made, built, or is behind KAH KEN SHA NEY or this assistant, respond with exactly the verified developer information below. Do not omit any developer names. Do not start with unnecessary phrases such as "I am the Official AI assistant", "I am an AI-powered assistant", "Hello!", or "Let me tell you". Do not use Markdown bold or bullet lists. Use plain text only:
+
+KAH KEN SHA NEY was developed by Melvin Maquilan, Cristian Jim Pogoy, Axl Moraleja, and Aldrian Dajes. They are 3rd-year BSCS students at SMCTI.
+
+Do not invent additional information about the developers.
 ''';
 
   final List<ChatMessage> _history = [];
@@ -63,49 +92,46 @@ App Features:
     ));
   }
 
-  Future<String> sendMessage(String message) async {
-    if (message.trim().isEmpty) return '';
+  /// Add assistant response to history (for UI display).
+  void addAssistantMessage(String message) {
+    _history.add(ChatMessage(
+      text: message,
+      isUser: false,
+      timestamp: DateTime.now(),
+    ));
+  }
 
-    debugPrint('[ChatService] API key present: ${_apiKey.isNotEmpty}');
-    debugPrint('[ChatService] API key length: ${_apiKey.length}');
+  Future<String> sendMessage(String message) async {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return '';
+
+    debugPrint('[ChatService] API key configured: ${_apiKey.isNotEmpty}');
 
     if (_apiKey.isEmpty) {
-      return 'API key not configured. Please check your .env file.';
+      debugPrint('[ChatService] GEMINI_API_KEY is missing from .env');
+      return 'The AI assistant is not configured. Please check the app configuration.';
     }
 
-    // If user message wasn't already added, add it now
+    // Add the user message to history if it isn't already the last message.
     if (_history.isEmpty ||
-        _history.last.text != message ||
+        _history.last.text != trimmed ||
         !_history.last.isUser) {
-      addUserMessage(message);
+      addUserMessage(trimmed);
     }
+
+    final client = _client ?? http.Client();
 
     try {
+      // The API key is placed in the query string by the Gemini API. This URL
+      // is deliberately never logged because it would expose the key.
       final url = Uri.parse(
         '$_baseUrl/models/$_model:generateContent?key=$_apiKey',
       );
 
-      debugPrint('[ChatService] Calling: $url');
+      debugPrint('[ChatService] Sending Gemini request...');
+      debugPrint('[ChatService] Conversation messages: ${_history.length}');
 
-      // Build contents array from history (skip last user msg)
-      final contents = <Map<String, dynamic>>[];
-      for (var i = 0; i < _history.length - 1; i++) {
-        final msg = _history[i];
-        contents.add({
-          'role': msg.isUser ? 'user' : 'model',
-          'parts': [
-            {'text': msg.text}
-          ],
-        });
-      }
-
-      // Add current message
-      contents.add({
-        'role': 'user',
-        'parts': [
-          {'text': message.trim()}
-        ],
-      });
+      final contents = _buildContents(trimmed);
 
       final body = jsonEncode({
         'contents': contents,
@@ -115,76 +141,196 @@ App Features:
           ],
         },
         'generationConfig': {
-          'maxOutputTokens': 500,
+          'maxOutputTokens': 2048,
           'temperature': 0.4,
         },
       });
 
-      debugPrint('[ChatService] Request body: $body');
-
-      final response = await _client
+      final response = await client
           .post(url,
               headers: {'Content-Type': 'application/json'}, body: body)
-          .timeout(const Duration(seconds: 30));
+          .timeout(timeout);
 
       debugPrint('[ChatService] Response status: ${response.statusCode}');
-      debugPrint('[ChatService] Response body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-
-        // Check for prompt feedback (blocked responses)
-        final promptFeedback = data['promptFeedback'];
-        if (promptFeedback != null) {
-          debugPrint('[ChatService] Prompt feedback: $promptFeedback');
-          final blockReason = promptFeedback['blockReason'];
-          if (blockReason != null) {
-            return 'Your message was blocked by safety filters. '
-                'Please try asking about app features instead.';
-          }
-        }
-
-        final candidates = data['candidates'] as List?;
-        if (candidates != null && candidates.isNotEmpty) {
-          final candidate = candidates[0] as Map<String, dynamic>;
-          debugPrint('[ChatService] Candidate keys: ${candidate.keys.toList()}');
-
-          final content = candidate['content'] as Map<String, dynamic>?;
-          final parts = content?['parts'] as List?;
-          if (parts != null && parts.isNotEmpty) {
-            final text = parts[0]['text'] as String?;
-            if (text != null && text.isNotEmpty) {
-              _history.add(ChatMessage(
-                text: text,
-                isUser: false,
-                timestamp: DateTime.now(),
-              ));
-              return text;
-            }
-          }
-
-          // Check finish reason
-          final finishReason = candidate['finishReason'];
-          debugPrint('[ChatService] Finish reason: $finishReason');
-          if (finishReason == 'SAFETY') {
-            return 'Response blocked by safety filters. '
-                'Please try a different question about the app.';
-          }
-        }
-        return 'No response received. Please try again.';
-      } else if (response.statusCode == 429) {
-        return 'Too many requests. Please wait a moment and try again.';
-      } else {
-        debugPrint(
-            '[ChatService] Error ${response.statusCode}: ${response.body}');
-        final errorData =
-            jsonDecode(response.body) as Map<String, dynamic>?;
-        final errorMsg = errorData?['error']?['message'] as String?;
-        return errorMsg ?? 'Something went wrong. Please try again later.';
-      }
+      return _handleResponse(response);
+    } on TimeoutException {
+      debugPrint('[ChatService] Timeout while waiting for Gemini');
+      return 'The AI assistant is taking too long to respond. Please try again.';
+    } on SocketException catch (e) {
+      debugPrint('[ChatService] Network socket error: ${e.message}');
+      return 'Unable to connect to the AI assistant. '
+          'Please check your internet connection and try again.';
+    } on http.ClientException catch (e) {
+      debugPrint('[ChatService] HTTP client error: ${e.message}');
+      return 'Unable to connect to the AI assistant. '
+          'Please check your internet connection and try again.';
     } catch (e) {
-      debugPrint('[ChatService] Network error: $e');
-      return 'Could not connect to the server. Check your connection and try again.';
+      debugPrint('[ChatService] Unexpected error: $e');
+      return 'The AI assistant could not generate a response. Please try again.';
+    } finally {
+      // A fresh client is used per request so stale keep-alive sockets do not
+      // cause later requests to hang. Injected clients are owned by the caller.
+      if (_client == null) {
+        client.close();
+      }
     }
+  }
+
+  /// Converts the stored conversation into Gemini `contents`, guaranteeing an
+  /// alternating `user`/`model` pattern and that the current message appears
+  /// exactly once.
+  List<Map<String, dynamic>> _buildContents(String trimmed) {
+    final contents = <Map<String, dynamic>>[];
+
+    for (final msg in _history) {
+      final text = msg.text.trim();
+      if (text.isEmpty) continue;
+      final role = msg.isUser ? 'user' : 'model';
+
+      final last = contents.isNotEmpty ? contents.last : null;
+      if (last != null && last['role'] == role) {
+        // Merge consecutive same-role turns so the API never receives
+        // user,user / model,model sequences.
+        final lastText =
+            ((last['parts'] as List).first as Map<String, dynamic>)['text']
+                as String;
+        last['parts'] = [
+          {'text': '$lastText\n$text'},
+        ];
+      } else {
+        contents.add({
+          'role': role,
+          'parts': [
+            {'text': text},
+          ],
+        });
+      }
+    }
+
+    // Ensure the latest user message is the final turn.
+    final last = contents.isNotEmpty ? contents.last : null;
+    final lastText = last == null
+        ? ''
+        : ((last['parts'] as List).first as Map<String, dynamic>)['text']
+            as String;
+    if (last == null || last['role'] != 'user' || lastText != trimmed) {
+      contents.add({
+        'role': 'user',
+        'parts': [
+          {'text': trimmed},
+        ],
+      });
+    }
+
+    return contents;
+  }
+
+  String _handleResponse(http.Response response) {
+    final status = response.statusCode;
+
+    if (status == 200) {
+      return _parseSuccess(response.body);
+    }
+
+    switch (status) {
+      case 400:
+        debugPrint(
+            '[ChatService] Gemini API returned HTTP 400 (invalid request)');
+        return 'The AI assistant could not understand that message. '
+            'Please try rephrasing.';
+      case 401:
+      case 403:
+        debugPrint(
+            '[ChatService] Gemini API returned HTTP $status (auth/config)');
+        return 'The AI assistant is not configured correctly. '
+            'Please contact support.';
+      case 404:
+        debugPrint(
+            '[ChatService] Gemini API returned HTTP 404 (model not found)');
+        return 'The AI assistant is temporarily unavailable. '
+            'Please try again later.';
+      case 429:
+        debugPrint('[ChatService] Gemini API returned HTTP 429 (rate limit)');
+        return 'The AI assistant is temporarily busy. Please try again shortly.';
+      case 500:
+      case 502:
+      case 503:
+      case 504:
+        debugPrint(
+            '[ChatService] Gemini API returned HTTP $status (server error)');
+        return 'The AI assistant is temporarily unavailable. '
+            'Please try again later.';
+      default:
+        debugPrint('[ChatService] Gemini API returned HTTP $status');
+        return 'The AI assistant returned an unexpected response. '
+            'Please try again.';
+    }
+  }
+
+  /// Safely extracts the reply text from a Gemini `generateContent` response.
+  String _parseSuccess(String rawBody) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(rawBody);
+    } on FormatException catch (e) {
+      debugPrint('[ChatService] Invalid JSON in response: $e');
+      return 'The AI assistant returned an unexpected response. Please try again.';
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      debugPrint('[ChatService] Response was not a JSON object');
+      return 'The AI assistant returned an unexpected response. Please try again.';
+    }
+
+    final promptFeedback = decoded['promptFeedback'];
+    if (promptFeedback is Map<String, dynamic>) {
+      final blockReason = promptFeedback['blockReason'];
+      if (blockReason is String && blockReason.isNotEmpty) {
+        debugPrint('[ChatService] Prompt blocked: $blockReason');
+        return 'Your message was blocked by safety filters. '
+            'Please try asking about app features instead.';
+      }
+    }
+
+    final candidates = decoded['candidates'];
+    if (candidates is! List || candidates.isEmpty) {
+      debugPrint('[ChatService] No candidates in response');
+      return 'The AI assistant returned an unexpected response. Please try again.';
+    }
+
+    final candidate = candidates.first;
+    if (candidate is! Map<String, dynamic>) {
+      debugPrint('[ChatService] Unexpected candidate shape');
+      return 'The AI assistant returned an unexpected response. Please try again.';
+    }
+
+    final finishReason = candidate['finishReason'];
+    final content = candidate['content'];
+    final parts = content is Map<String, dynamic> ? content['parts'] : null;
+
+    if (parts is List && parts.isNotEmpty) {
+      final part = parts.first;
+      final text = part is Map<String, dynamic> ? part['text'] : null;
+      if (text is String && text.trim().isNotEmpty) {
+        final reply = text.trim();
+        _history.add(ChatMessage(
+          text: reply,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ));
+        debugPrint('[ChatService] Gemini response parsed successfully');
+        return reply;
+      }
+    }
+
+    if (finishReason == 'SAFETY' || finishReason == 'BLOCKED') {
+      debugPrint('[ChatService] Response blocked: $finishReason');
+      return 'Your message was blocked by safety filters. '
+          'Please try asking about app features instead.';
+    }
+
+    debugPrint('[ChatService] Empty response. finishReason=$finishReason');
+    return 'The AI assistant returned an unexpected response. Please try again.';
   }
 }

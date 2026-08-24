@@ -105,6 +105,50 @@ Replaced the default bottom-nav/page transitions with smooth, direction-aware Ma
 
 ---
 
+## 2026-08-19 - Branding, Dashboard Features & Reliability
+Covers the KAH KEN SHA NEY rebrand, the user dashboard upgrade (live status tracking, real recent reports, account logout), the photo gallery feature, and chatbot reliability hardening.
+
+### KAH KEN SHA NEY Branding
+* Replaced all user-facing "AmongApp" references with **KAH KEN SHA NEY** ("an AI and ML-powered application that turns your lost into found"):
+  * `lib/main.dart` — MaterialApp `title` (both firebase-ready and error routes).
+  * `lib/services/chat_service.dart` + `lib/services/kashtep_chat_service.dart` + `functions/src/chatbot.js` — system prompts and developer information ("KAH KEN SHA NEY was developed by Melvin Maquilan, Cristian Jim Pogoy, Axl Moraleja, and Aldrian Dajes. They are 3rd-year BSCS students at SMCTI.").
+* Technical identifiers keep `AmongApp` (project/package/folder names, `AmongApp` widget class, tests).
+
+### Dashboard: Status Tracking + Recent Reports (`lib/pages/home_feed.dart`)
+* `ItemStatus` extended from 3 → 6 stages in `lib/models/lost_found_item.dart`: `open` (Submitted) → `pendingVerification` → `verified` → `matched` → `claimed` → `closed` (Archived). Legacy values preserved so existing Firestore documents and admin tests keep working. Added `label` (tracker) and `shortLabel` (compact pill) via `ItemStatusX`.
+* All exhaustive status switches updated for the 6 stages: `_StatusPill` in `lib/pages/item_list_page.dart` and `lib/widgets/item_grid_card.dart`, plus admin `_statusLabel`/`_StatusBadge` in `lib/screens/admin_dashboard.dart` (open still renders "Pending" for the admin test).
+* `ItemRepository.streamUserItems(ownerUid)` (`lib/data/firestore/item_repository.dart`) — real-time per-user stream using only a single-field `ownerUid` query with a client-side `createdAt` desc sort (avoids a new composite index in the console).
+* New `_UserReportsSection` widget in `home_feed.dart`:
+  * **Status Tracking** — horizontally scrollable 6-step stepper (done/current/upcoming states, per-stage icons, connecting line). `Archived` renders as the fully-completed state.
+  * **Recent Reports** — real Firestore rows (type icon, name, relative date, compact status pill), newest first, max 5 shown, tap to select (radio indicator) → tracker follows; data updates live via the stream.
+  * **"View All Reports"** button → Reports tab (`onTabSelected(2)`).
+  * Clean loading / error (with Retry that re-subscribes) / empty states. If no `ownerUid`, no Firestore query is made (keeps widget tests Firebase-free).
+* `HomePage` and `DashboardScreen` now thread `ownerUid` (`_auth.currentUser?.uid`) and logout/change-password callbacks down to `HomeFeed`.
+
+### User Logout
+* Avatar now opens an account bottom sheet (Profile, Change Password, Log out).
+* Log out shows a confirmation dialog, then `DashboardScreen._signOut()` signs out and `pushAndRemoveUntil` to `LoginScreen` (back button cannot return to the dashboard). Admin logout unchanged.
+
+### Photo Gallery Feature
+* `StorageService.uploadItemPhotos` now takes a required `folder` — report_lost writes to `lost/{itemId}/`, submit_found to `found/{itemId}/`.
+* `StorageService.fetchImagesFromFolder(folderName)` recursively lists and resolves image download URLs.
+* New `lib/pages/image_gallery_page.dart` — Lost/Found tabs, responsive 2/3/4-column grid, loading/empty/error+Retry, pull-to-refresh, image loading/error placeholders.
+* `lib/pages/items_grid_page.dart` banner gains a "photo library" button that opens `ImageGalleryPage`.
+* Old `items/{itemId}/` uploads still render via their Firestore download URLs.
+
+### Chatbot Reliability
+* `lib/services/chat_service.dart` rewritten — 60s configurable timeout, fresh `http.Client` per request (closed on completion unless injected) to avoid stale keep-alive stalls; `_buildContents` merges consecutive same-role turns and guarantees the current user message appears exactly once last; response parsing hardened (blocked prompts, empty candidates, SAFETY/BLOCKED finish reasons); explicit brief-and-complete developer answer instruction; `maxOutputTokens` 500 → 2048.
+* Logs no longer include the API key or request URL (only "key configured: bool", message count, status, parse success).
+* `lib/services/kashtep_chat_service.dart` and `functions/src/chatbot.js` — same developer/brief-answer instruction and `maxOutputTokens` 2048; `chatbot.js` model upgraded to `gemini-3.6-flash` (requires `firebase deploy --only functions`).
+* `android/app/src/main/AndroidManifest.xml` — added `android:enableOnBackInvokedCallback="true"`.
+
+### Verification
+* `flutter analyze` — clean.
+* `flutter test` — 61/61 pass (incl. admin "Pending" assertion and the narrow-screen Home feed overflow test).
+* `flutter build apk --debug` — succeeds.
+
+---
+
 ## Environment Details
 
 | Property | Value |
@@ -118,7 +162,7 @@ Replaced the default bottom-nav/page transitions with smooth, direction-aware Ma
 ## Firebase Services Used
 - **Authentication** — Email/password + OTP verification
 - **Cloud Firestore** — Items, user profiles, messages
-- **Firebase Storage** — Item photos (`items/{itemId}/...`)
+- **Firebase Storage** — Item photos (`lost/{itemId}/...`, `found/{itemId}/...`)
 - **Cloud Functions** — OTP API (send/verify/change password)
 - **Firebase Messaging** — Push notifications (FCM tokens stored in UserProfile)
 

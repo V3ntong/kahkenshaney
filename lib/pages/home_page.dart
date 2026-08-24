@@ -15,12 +15,14 @@ class HomePage extends StatefulWidget {
     super.key,
     this.userName,
     this.userEmail,
+    this.ownerUid,
     this.onChangePassword,
     this.onSignOut,
   });
 
   final String? userName;
   final String? userEmail;
+  final String? ownerUid;
   final VoidCallback? onChangePassword;
   final VoidCallback? onSignOut;
 
@@ -36,11 +38,14 @@ class _HomePageState extends State<HomePage> {
     KeepAliveWrapper(
       child: HomeFeed(
         userName: widget.userName,
+        ownerUid: widget.ownerUid,
         onAiScan: () => _comingSoon('AI Scan'),
         onTabSelected: _goToTab,
         onComingSoon: _comingSoon,
         onNotifications: _showNotifications,
         onProfile: () => _comingSoon('Profile'),
+        onChangePassword: widget.onChangePassword,
+        onSignOut: widget.onSignOut,
       ),
     ),
     KeepAliveWrapper(
@@ -70,7 +75,9 @@ class _HomePageState extends State<HomePage> {
             'Found something? Submit it and help reunite it with its owner.',
       ),
     ),
-    const KeepAliveWrapper(child: MessagesPage()),
+    KeepAliveWrapper(
+      child: MessagesPage(userId: widget.ownerUid),
+    ),
   ];
 
   void _goToTab(int index) {

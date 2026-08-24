@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../mainpage.dart';
 import '../pages/home_page.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
@@ -86,7 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      FadeThroughRoute(builder: (_) => const MainPage()),
+      FadeThroughRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
   }
@@ -108,6 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         HomePage(
           userName: displayName,
           userEmail: email,
+          ownerUid: _auth.currentUser?.uid,
           onChangePassword: _goToChangePassword,
           onSignOut: _signOut,
         ),

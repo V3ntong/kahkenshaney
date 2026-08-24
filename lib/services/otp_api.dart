@@ -277,6 +277,8 @@ class FirebaseOtpApi implements OtpApi {
     switch (normalized) {
       case 'not-found':
         return 'No account found with this email address.';
+      case 'already-exists':
+        return 'An account with this email already exists. Please log in instead.';
       case 'resource-exhausted':
         return 'Too many attempts. Please try again later.';
       case 'unavailable':
@@ -292,6 +294,8 @@ class FirebaseOtpApi implements OtpApi {
     switch (status) {
       case 'NOT_FOUND':
         return 'No account found with this email address.';
+      case 'ALREADY_EXISTS':
+        return 'An account with this email already exists. Please log in instead.';
       case 'INVALID_ARGUMENT':
         return 'Please check the information you entered.';
       case 'RESOURCE_EXHAUSTED':

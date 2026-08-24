@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/validators.dart';
 import '../../widgets/app_alert.dart';
 import '../../widgets/app_button.dart';
@@ -56,10 +57,31 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       );
     } on AuthException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      final message = e.message;
+      if (_isEmailNotFound(message)) {
+        await showAppDialog(
+          context,
+          title: 'Email Not Found',
+          message:
+              'The email address you entered is not registered. Please check '
+              'your email or create an account.',
+          icon: Icons.mark_email_unread_outlined,
+          iconColor: AppColors.error,
+        );
+      } else {
+        setState(() => _error = message);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Checks whether the error message indicates a missing account.
+  bool _isEmailNotFound(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('no account found') ||
+        lower.contains('not found') ||
+        lower.contains('not registered');
   }
 
   @override
@@ -67,8 +89,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return AuthScaffold(
       title: 'Forgot Password',
       subtitle:
-          'Enter your registered email and we will send you a one-time '
-          'verification code.',
+          "Enter your registered email. We’ll send you a code to confirm you’re actually you. Yes, it’s necessary.",
       children: [
         Form(
           key: _formKey,

@@ -133,6 +133,7 @@ Firestore CRUD for the `items` collection.
 | `addItem` | `LostFoundItem` | `Future<void>` | Create/update item document |
 | `getItem` | `id` | `Future<LostFoundItem?>` | Fetch single item by ID |
 | `streamItems` | `kind?` | `Stream<List<LostFoundItem>>` | Real-time stream of items (optionally filtered by kind) |
+| `streamUserItems` | `ownerUid` | `Stream<List<LostFoundItem>>` | Real-time stream of one user's reports, sorted newest first (client-side sort; single-field `ownerUid` query, no composite index needed) |
 | `updateItem` | `LostFoundItem` | `Future<void>` | Update existing item |
 | `deleteItem` | `id` | `Future<void>` | Delete item document |
 
@@ -145,7 +146,7 @@ Firestore CRUD for the `items` collection.
 | `ownerUid` | `String` | UID of reporter |
 | `location` | `String?` | Where lost/found |
 | `storageLocation` | `String?` | Where found item is stored |
-| `status` | `String` | `"open"`, `"matched"`, or `"closed"` |
+| `status` | `String` | `"open"`, `"pendingVerification"`, `"verified"`, `"matched"`, `"claimed"`, or `"closed"` |
 | `media` | `List<String>` | Photo download URLs |
 | `createdAt` | `DateTime` | Creation timestamp |
 | `updatedAt` | `DateTime` | Last update timestamp |
@@ -191,14 +192,14 @@ Firebase Storage uploads for item photos.
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `uploadItemPhotos` | `itemId`, `images` | `Future<List<String>>` | Upload photos, return download URLs |
+| `uploadItemPhotos` | `folder`, `itemId`, `images` | `Future<List<String>>` | Upload photos under `{folder}/{itemId}/`, return download URLs |
+| `fetchImagesFromFolder` | `folderName` | `Future<List<String>>` | Recursively list all image download URLs in a storage folder |
 
 #### Storage Structure
 ```
-items/
-  {itemId}/
-    {timestamp}_0.jpg
-    {timestamp}_1.jpg
+lost/           found/
+  {itemId}/       {itemId}/
+    {timestamp}_i.jpg
     ...
 ```
 
@@ -209,7 +210,7 @@ items/
 ### `KashtepChatService`
 **File:** `lib/services/kashtep_chat_service.dart`
 
-Direct Gemini API client (no Cloud Function proxy). Uses the API key from `.env` (`GEMINI_API_KEY`). Model: `gemini-2.0-flash`.
+Direct Gemini API client (no Cloud Function proxy). Uses the API key from `.env` (`GEMINI_API_KEY`). Model: `gemini-3.6-flash`.
 
 #### `ChatMessage`
 ```dart
@@ -231,10 +232,12 @@ class ChatMessage {
 
 #### Behaviors
 - Sends the last 20 messages (full history) as `contents` plus a `systemInstruction` constraining KashTeP to app-related answers.
-- Timeout: 30s per request; `temperature: 0.4`, `maxOutputTokens: 500`.
+- A fresh `http.Client` is created per request (closed on completion unless one is injected) so stale keep-alive connections never stall the chat.
+- Timeout: 60s per request; `temperature: 0.4`, `maxOutputTokens: 2048`.
 - Handles blocked prompts (`blockReason` / `finishReason == 'SAFETY'`) with friendly messages.
-- HTTP 429 → rate-limit message; other errors → API error message fallback.
-- SECURITY NOTE: API key is exposed in the client binary. Fine for prototyping/school; move to a backend proxy for production.
+- HTTP 400/401/403/404 → key/config error; 429 → rate-limit message; other 5xx → API error message fallback.
+- Logging never includes the API key or the full request URL — only whether a key is configured, message count, HTTP status, and parse success.
+- SECURITY NOTE: API key is exposed in the client binary. Fine for prototyping/school; move to a backend proxy for production. Rotation is recommended before any public release.
 
 ### `ChatService` (Legacy)
 **File:** `lib/services/chat_service.dart`
@@ -265,8 +268,17 @@ Original direct-Gemini client used by `ChatbotButton`/`ChatScreen`. Superseded b
 #### Enums
 ```dart
 enum ItemKind { lost, found }
-enum ItemStatus { open, matched, closed }
+
+enum ItemStatus {
+  open,                  // Submitted
+  pendingVerification,   // Pending Verification
+  verified,              // Verified
+  matched,               // Matched
+  claimed,               // Claimed
+  closed,                // Archived
+}
 ```
+`ItemStatus` additionally exposes `label` (full tracker name) and `shortLabel` (compact pill name) via the `ItemStatusX` extension. Legacy values `open`/`matched`/`closed` are preserved for Firestore compatibility.
 
 ### `UserProfile`
 **File:** `lib/models/user_profile.dart`

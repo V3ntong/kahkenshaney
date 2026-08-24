@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
+import '../screens/item_detail_screen.dart';
 import '../theme/app_theme.dart';
+import '../utils/page_transitions.dart';
 import '../widgets/item_grid_card.dart';
+import 'image_gallery_page.dart';
 
 /// 2-column grid page for either Lost or Found items, backed by Firestore.
 ///
@@ -20,6 +23,7 @@ class ItemsGridPage extends StatelessWidget {
     this.emptyIcon = Icons.inbox_outlined,
     this.emptyTitle = 'No items yet',
     this.emptyMessage = 'Items will appear here once reported.',
+    this.onGalleryTap,
     this.repository,
   });
 
@@ -31,6 +35,7 @@ class ItemsGridPage extends StatelessWidget {
   final IconData emptyIcon;
   final String emptyTitle;
   final String emptyMessage;
+  final VoidCallback? onGalleryTap;
   final ItemRepository? repository;
 
   @override
@@ -51,6 +56,13 @@ class ItemsGridPage extends StatelessWidget {
               subtitle: bannerSubtitle,
               ctaLabel: ctaLabel,
               onCtaTap: onCtaTap,
+              onGalleryTap: onGalleryTap ??
+                  () => Navigator.push(
+                        context,
+                        FadeSlideRoute(
+                          builder: (_) => ImageGalleryPage(initialKind: kind),
+                        ),
+                      ),
               accent: accent,
               accentSurface: accentSurface,
               isLost: kind == ItemKind.lost,
@@ -103,7 +115,15 @@ class ItemsGridPage extends StatelessWidget {
                     childAspectRatio: 0.72,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (context, index) => ItemGridCard(item: items[index]),
+                    (context, index) => ItemGridCard(
+                      item: items[index],
+                      onTap: () => Navigator.push(
+                        context,
+                        FadeSlideRoute(
+                          builder: (_) => ItemDetailScreen(item: items[index]),
+                        ),
+                      ),
+                    ),
                     childCount: items.length,
                   ),
                 ),
@@ -124,6 +144,7 @@ class _Banner extends StatelessWidget {
     required this.subtitle,
     required this.ctaLabel,
     required this.onCtaTap,
+    required this.onGalleryTap,
     required this.accent,
     required this.accentSurface,
     required this.isLost,
@@ -133,6 +154,7 @@ class _Banner extends StatelessWidget {
   final String subtitle;
   final String ctaLabel;
   final VoidCallback onCtaTap;
+  final VoidCallback onGalleryTap;
   final Color accent;
   final Color accentSurface;
   final bool isLost;
@@ -204,6 +226,19 @@ class _Banner extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  onPressed: onGalleryTap,
+                  tooltip: 'View image gallery',
+                  icon: const Icon(
+                    Icons.photo_library_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
                   ),
                 ),
               ],

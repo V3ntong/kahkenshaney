@@ -1,6 +1,6 @@
 # KAH KEN SHA NEY (AmongApp)
 
-AI-Powered Lost & Found application with OTP-based authentication.
+AI and ML-powered application that turns your lost into found, with OTP-based authentication.
 
 ## Features
 
@@ -8,6 +8,9 @@ AI-Powered Lost & Found application with OTP-based authentication.
 - **OTP Authentication** — Secure email-based verification for signup, password reset, and password change
 - **Smart Matching** — AI-powered matching of lost and found items
 - **Real-time Dashboard** — Overview of reports, AI suggestions, and campus announcements
+- **Status Tracking** — Live 6-stage tracker (Submitted → Pending Verification → Verified → Matched → Claimed → Archived) driven by Firestore, updated in real time
+- **Recent Reports** — Your latest reports on the Home tab (newest first) with type, name, status, and date; "View All Reports" jumps to the Reports tab
+- **Account Menu** — Avatar menu with Profile, Change Password, and a confirm-enabled Log out back to the login screen
 
 ## Getting Started
 

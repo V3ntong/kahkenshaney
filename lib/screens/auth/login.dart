@@ -8,6 +8,7 @@ import '../../widgets/app_button.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../utils/page_transitions.dart';
+import '../admin_dashboard.dart';
 import '../dashboard.dart';
 import 'forgot_password.dart';
 import 'signup.dart';
@@ -54,15 +55,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
     switch (result) {
       case AuthSuccess():
+        final home = _auth.isAdminAuthenticated
+            ? AdminDashboardScreen(authService: widget.authService)
+            : DashboardScreen(authService: widget.authService);
         Navigator.pushAndRemoveUntil(
           context,
-          FadeThroughRoute(
-            builder: (_) => DashboardScreen(authService: widget.authService),
-          ),
+          FadeThroughRoute(builder: (_) => home),
           (route) => false,
         );
       case AuthFailure(:final message):
-        setState(() => _error = message);
+        if (_isEmailNotFound(message)) {
+          await showAppDialog(
+            context,
+            title: 'Email Not Found',
+            message:
+                'The email address you entered is not registered. Please check '
+                'your email or create an account.',
+            icon: Icons.mark_email_unread_outlined,
+            iconColor: AppColors.error,
+          );
+        } else {
+          setState(() => _error = message);
+        }
     }
   }
 
@@ -80,6 +94,14 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (_) => SignupScreen(authService: widget.authService),
       ),
     );
+  }
+
+  /// Checks whether the error message indicates a missing account.
+  bool _isEmailNotFound(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('no account found') ||
+        lower.contains('not found') ||
+        lower.contains('not registered');
   }
 
   @override

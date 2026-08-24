@@ -1,8 +1,8 @@
-# Architecture — AmongApp
+# Architecture — KAH KEN SHA NEY (AmongApp)
 
 ## Overview
 
-AmongApp is a Flutter-based Lost & Found application powered by Firebase. It uses AI-assisted matching to reunite lost items with their owners. The architecture follows a clean separation of concerns with feature-based folder organization.
+KAH KEN SHA NEY (AmongApp) is a Flutter-based Lost & Found application powered by Firebase. It uses AI-assisted matching to reunite lost items with their owners. The architecture follows a clean separation of concerns with feature-based folder organization.
 
 ## High-Level Architecture
 
@@ -42,19 +42,19 @@ lib/
 │
 ├── data/                              # Data access layer
 │   ├── firestore/
-│   │   ├── item_repository.dart       # CRUD + real-time stream for items (typed)
+│   │   ├── item_repository.dart       # CRUD + real-time streams for items (typed, incl. per-user)
 │   │   └── database_service.dart       # Generic CRUD + user profiles (maps)
 │   └── storage/
 │       └── storage_service.dart       # Photo uploads to Firebase Storage
 │
 ├── models/                            # Data models (plain Dart classes)
-│   ├── lost_found_item.dart           # LostFoundItem + ItemKind + ItemStatus enums
+│   ├── lost_found_item.dart           # LostFoundItem + ItemKind + ItemStatus (6-stage) enums
 │   ├── user_profile.dart              # UserProfile with FCM tokens
 │   └── app_message.dart               # AppMessage for chat/messaging
 │
 ├── pages/                             # Tab content & feature screens
 │   ├── home_page.dart                 # Main navigation shell (PageView + BottomNav)
-│   ├── home_feed.dart                 # Dashboard feed (summary, features, reports, AI)
+│   ├── home_feed.dart                 # Dashboard feed (summary, features, status tracker, recent reports, AI)
 │   ├── profile_page.dart              # User profile view
 │   ├── messages_page.dart             # Messages tab (coming soon)
 │   ├── item_list_page.dart            # List layout for items (unused by tabs)

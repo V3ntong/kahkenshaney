@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { sendOtpEmail } from './email';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {
@@ -12,6 +13,15 @@ import {
 admin.initializeApp();
 
 const db = admin.firestore();
+
+/** Secrets required for SMTP email delivery. */
+const SMTP_SECRETS = [
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'MAIL_FROM',
+] as const;
 
 const OTP_COLLECTION = 'otpRequests';
 /** Codes are valid for 5 minutes. */
@@ -67,9 +77,18 @@ async function issueOtp(
   try {
     const emailPurpose =
       purpose === 'signup' ? 'verification' : purpose === 'reset' ? 'reset' : 'change';
+    let displayName = 'there';
+    if (purpose !== 'signup') {
+      try {
+        const user = await admin.auth().getUserByEmail(email);
+        displayName = user.displayName ?? 'there';
+      } catch {
+        // For non-signup purposes, user must exist — but fall back gracefully.
+      }
+    }
     await sendOtpEmail({
       to: email,
-      name: (await admin.auth().getUserByEmail(email)).displayName ?? 'there',
+      name: displayName,
       otp,
       purpose: emailPurpose,
       expiresInMinutes: OTP_TTL_MS / 60_000,
@@ -122,16 +141,22 @@ async function assertOwnAccount(
  * The account stays inactive (emailVerified = false) until the code is
  * confirmed by [verifySignupOtp].
  */
-export const sendSignupOtp = onCall(async (request) => {
+export const sendSignupOtp = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   if (!isValidEmail(email)) {
     throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
   }
 
+  // Reject if an account already exists — this is a signup-only flow.
   try {
     await admin.auth().getUserByEmail(email);
-  } catch {
-    throw new HttpsError('not-found', 'No account found with this email address.');
+    throw new HttpsError(
+      'already-exists',
+      'An account with this email already exists. Please log in instead.'
+    );
+  } catch (e) {
+    if (e instanceof HttpsError && e.code === 'already-exists') throw e;
+    // getUserByEmail threw "not-found" — expected for new signups.
   }
 
   await issueOtp(email, 'signup');
@@ -142,7 +167,7 @@ export const sendSignupOtp = onCall(async (request) => {
  * Verifies a signup OTP. On success the account is activated by setting
  * emailVerified = true and the code is consumed (single-use).
  */
-export const verifySignupOtp = onCall(async (request) => {
+export const verifySignupOtp = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   const otp =
     typeof request.data?.otp === 'string' ? request.data.otp.trim() : '';
@@ -151,14 +176,6 @@ export const verifySignupOtp = onCall(async (request) => {
   }
 
   await verifyOtpRecord(email, otp, 'signup');
-
-  try {
-    const user = await admin.auth().getUserByEmail(email);
-    await admin.auth().updateUser(user.uid, { emailVerified: true });
-  } catch {
-    throw new HttpsError('internal', 'We could not activate your account. Please try again.');
-  }
-
   await otpRef(email).delete();
   return { ok: true };
 });
@@ -167,7 +184,7 @@ export const verifySignupOtp = onCall(async (request) => {
  * Sends a single-use, expiring OTP to a registered email address for
  * password recovery.
  */
-export const sendPasswordResetOtp = onCall(async (request) => {
+export const sendPasswordResetOtp = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   if (!isValidEmail(email)) {
     throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
@@ -189,7 +206,7 @@ export const sendPasswordResetOtp = onCall(async (request) => {
  * per-record attempt limit and constant-time comparison. Marks the record
  * verified on success.
  */
-export const verifyPasswordResetOtp = onCall(async (request) => {
+export const verifyPasswordResetOtp = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   const otp =
     typeof request.data?.otp === 'string' ? request.data.otp.trim() : '';
@@ -205,7 +222,7 @@ export const verifyPasswordResetOtp = onCall(async (request) => {
  * Sends a single-use OTP to the signed-in user's registered email before
  * allowing a password change. The caller must own the account.
  */
-export const sendChangePasswordOtp = onCall(async (request) => {
+export const sendChangePasswordOtp = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   if (!isValidEmail(email)) {
     throw new HttpsError('invalid-argument', 'Please enter a valid email address.');
@@ -219,7 +236,7 @@ export const sendChangePasswordOtp = onCall(async (request) => {
 /**
  * Verifies a change-password OTP. Marks the record verified on success.
  */
-export const verifyChangePasswordOtp = onCall(async (request) => {
+export const verifyChangePasswordOtp = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   const otp =
     typeof request.data?.otp === 'string' ? request.data.otp.trim() : '';
@@ -235,7 +252,7 @@ export const verifyChangePasswordOtp = onCall(async (request) => {
  * Applies a new password for the signed-in user. Requires a previously
  * verified change-password OTP and consumes the code (single-use).
  */
-export const changePassword = onCall(async (request) => {
+export const changePassword = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   const otp =
     typeof request.data?.otp === 'string' ? request.data.otp.trim() : '';
@@ -257,7 +274,7 @@ export const changePassword = onCall(async (request) => {
  * Applies a new password after a forgotten-password reset. Requires a
  * previously verified reset OTP and consumes the code (single-use).
  */
-export const resetPassword = onCall(async (request) => {
+export const resetPassword = onCall({ secrets: [...SMTP_SECRETS] }, async (request) => {
   const email = normalizeEmail(request.data?.email);
   const otp =
     typeof request.data?.otp === 'string' ? request.data.otp.trim() : '';
@@ -367,3 +384,138 @@ async function verifyOtpRecord(
 
   await snapshot.ref.update({ verified: true });
 }
+
+// ── One-time Migration: Add moderationStatus to existing items ────────────
+
+/**
+ * Callable function to add `moderationStatus: 'approved'` to all items
+ * that don't have the field yet.
+ *
+ * Call once from the app or Firebase Console, then remove.
+ */
+export const migrateModerationStatus = onCall(async (request) => {
+  // Only admin can run this
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in.');
+  }
+
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!userDoc.data()?.isAdmin) {
+    throw new HttpsError('permission-denied', 'Only admin can run migration.');
+  }
+
+  const snapshot = await db.collection('items').get();
+  const batch = db.batch();
+  let count = 0;
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    if (!data.moderationStatus) {
+      batch.update(doc.ref, { moderationStatus: 'approved' });
+      count++;
+    }
+  }
+
+  if (count > 0) {
+    await batch.commit();
+  }
+
+  return { migrated: count, total: snapshot.docs.length };
+});
+
+// ── FCM Push Notification on Notification Create ──────────────────────────
+
+/**
+ * Firestore trigger: When a notification document is created under
+ * users/{userId}/notifications/{notificationId}, send a push notification
+ * to that user's device(s) via FCM.
+ */
+export const sendPushNotification = onDocumentCreated(
+  { region: 'us-central1', document: 'users/{userId}/notifications/{notificationId}' },
+  async (event) => {
+    const { userId, notificationId } = event.params;
+    const notificationData = event.data?.data();
+
+    if (!notificationData) {
+      console.log('No notification data, skipping push');
+      return;
+    }
+
+    const { title, body, relatedItemId } = notificationData;
+
+    try {
+      // Get the user's FCM tokens from their profile
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.data();
+
+      if (!userData) {
+        console.log(`User ${userId} not found, skipping push`);
+        return;
+      }
+
+      const fcmTokens = userData.fcmTokens as string[] | undefined;
+      if (!fcmTokens || fcmTokens.length === 0) {
+        console.log(`No FCM tokens for user ${userId}, skipping push`);
+        return;
+      }
+
+      // Build the push notification message
+      const message: admin.messaging.MulticastMessage = {
+        tokens: fcmTokens,
+        notification: {
+          title: title || 'New Notification',
+          body: body || '',
+        },
+        data: {
+          notificationId,
+          relatedItemId: relatedItemId || '',
+          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+        android: {
+          notification: {
+            channelId: 'lost_found_notifications',
+            priority: 'high' as const,
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+            },
+          },
+        },
+      };
+
+      // Send to all user devices
+      const response = await admin.messaging().sendEachForMulticast(message);
+
+      console.log(`Push sent to ${response.successCount}/${fcmTokens.length} devices for user ${userId}`);
+
+      // Clean up invalid tokens
+      if (response.failureCount > 0) {
+        const tokensToRemove: string[] = [];
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            const error = resp.error;
+            if (
+              error?.code === 'messaging/registration-token-not-registered' ||
+              error?.code === 'messaging/invalid-registration-token'
+            ) {
+              tokensToRemove.push(fcmTokens[idx]);
+            }
+          }
+        });
+
+        if (tokensToRemove.length > 0) {
+          await db.collection('users').doc(userId).update({
+            fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokensToRemove),
+          });
+          console.log(`Removed ${tokensToRemove.length} invalid tokens for user ${userId}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error sending push notification to user ${userId}:`, error);
+    }
+  }
+);

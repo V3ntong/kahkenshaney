@@ -301,7 +301,39 @@ class _ItemCard extends StatelessWidget {
               width: 54,
               height: 54,
               child: item.media.isNotEmpty
-                  ? Image.network(item.media.first, fit: BoxFit.cover)
+                  ? Image.network(
+                      item.media.first,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          color: AppColors.surfaceVariant,
+                          alignment: Alignment.center,
+                          child: const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, _, _) => Container(
+                        color: item.kind == ItemKind.lost
+                            ? AppColors.errorSurface
+                            : AppColors.successSurface,
+                        child: Icon(
+                          item.kind == ItemKind.lost
+                              ? Icons.fmd_bad_rounded
+                              : Icons.inventory_2_rounded,
+                          color: item.kind == ItemKind.lost
+                              ? AppColors.error
+                              : AppColors.success,
+                          size: 24,
+                        ),
+                      ),
+                    )
                   : Container(
                       color: item.kind == ItemKind.lost
                           ? AppColors.errorSurface
@@ -373,7 +405,10 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (status) {
       ItemStatus.open => ('OPEN', AppColors.success, AppColors.successSurface),
+      ItemStatus.pendingVerification => ('PENDING', AppColors.warning, AppColors.warningSurface),
+      ItemStatus.verified => ('VERIFIED', AppColors.info, AppColors.infoSurface),
       ItemStatus.matched => ('MATCHED', AppColors.primary, AppColors.infoSurface),
+      ItemStatus.claimed => ('CLAIMED', AppColors.success, AppColors.successSurface),
       ItemStatus.closed => ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
     };
     return Container(

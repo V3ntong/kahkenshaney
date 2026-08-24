@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── lost_and_found images ────────────────────────────────────────────
+    match /lost_and_found/{type}/{fileName} {
+      // Anyone authenticated can read images.
+      allow read: if request.auth != null;
+
+      // Only authenticated users can upload; path must match type.
+      allow create: if request.auth != null
+        && (type == 'lost' || type == 'found')
+        && request.resource.contentType.matches('image/.*');
+
+      // Only the uploader (matched via metadata) or admin can delete.
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.metadataUploaderId;
+    }
+
+    // ── everything else (legacy paths) ───────────────────────────────────
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Block new writes to legacy paths.
+    }
+  }
+}

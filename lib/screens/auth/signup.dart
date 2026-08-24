@@ -55,29 +55,45 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     setState(() => _loading = true);
-    final result = await _auth.register(
-      fullName: _nameController.text,
-      email: _emailController.text,
-      password: _passwordController.text,
-    );
+    try {
+      await _auth.resendSignupOtp(_emailController.text.trim());
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      final message = e.message;
+      if (_isEmailAlreadyRegistered(message)) {
+        setState(() => _loading = false);
+        await showAppDialog(
+          context,
+          title: 'Email Already Registered',
+          message:
+              'An account with this email already exists. Please log in '
+              'instead.',
+          icon: Icons.mark_email_read_outlined,
+          iconColor: AppColors.warning,
+        );
+      } else {
+        setState(() {
+          _loading = false;
+          _error = message;
+        });
+      }
+      return;
+    }
     if (!mounted) return;
     setState(() => _loading = false);
 
-    switch (result) {
-      case AuthSuccess(:final user):
-        Navigator.pushReplacement(
-          context,
-          SharedAxisRoute(
-            builder: (_) => OtpScreen(
-              email: user?.email ?? _emailController.text.trim(),
-              purpose: OtpPurpose.verifyEmail,
-              authService: widget.authService,
-            ),
-          ),
-        );
-      case AuthFailure(:final message):
-        setState(() => _error = message);
-    }
+    Navigator.pushReplacement(
+      context,
+      SharedAxisRoute(
+        builder: (_) => OtpScreen(
+          email: _emailController.text.trim(),
+          purpose: OtpPurpose.verifyEmail,
+          fullName: _nameController.text.trim(),
+          password: _passwordController.text,
+          authService: widget.authService,
+        ),
+      ),
+    );
   }
 
   void _openTerms() {
@@ -87,6 +103,14 @@ class _SignupScreenState extends State<SignupScreen> {
         fullscreenDialog: true,
       ),
     );
+  }
+
+  /// Checks whether the error message indicates the email is already registered.
+  bool _isEmailAlreadyRegistered(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('already exists') ||
+        lower.contains('already registered') ||
+        lower.contains('email-already-in-use');
   }
 
   @override
