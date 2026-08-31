@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -102,6 +103,15 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
             storagePath: primaryResult?.path,
           ),
         );
+
+        // Increment user report counters
+        final uid = _currentUid();
+        if (uid != 'anonymous') {
+          await FirebaseFirestore.instance.collection('users').doc(uid).update({
+            'reportsCount': FieldValue.increment(1),
+            'foundCount': FieldValue.increment(1),
+          });
+        }
       }
 
       if (!mounted) return;

@@ -45,9 +45,9 @@ class ProfileHeader extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        MetricCounter(value: provider.posts.length, label: 'Posts'),
-                        const MetricCounter(value: 0, label: 'Followers'),
-                        const MetricCounter(value: 0, label: 'Following'),
+                        MetricCounter(value: provider.reportsCount, label: 'Reports'),
+                        MetricCounter(value: provider.foundCount, label: 'Found'),
+                        MetricCounter(value: provider.lostCount, label: 'Lost'),
                       ],
                     ),
                   ),
@@ -70,6 +70,16 @@ class ProfileHeader extends StatelessWidget {
                   color: AppColors.textSecondary,
                 ),
               ),
+              if (user.bio != null && user.bio!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  user.bio!,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,

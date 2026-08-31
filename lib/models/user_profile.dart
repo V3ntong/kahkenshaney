@@ -7,6 +7,10 @@ class UserProfile {
     this.email,
     this.photoUrl,
     this.fcmTokens = const [],
+    this.reportsCount = 0,
+    this.foundCount = 0,
+    this.lostCount = 0,
+    this.bio,
     this.createdAt,
     this.updatedAt,
   });
@@ -16,6 +20,10 @@ class UserProfile {
   final String? email;
   final String? photoUrl;
   final List<String> fcmTokens;
+  final int reportsCount;
+  final int foundCount;
+  final int lostCount;
+  final String? bio;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -23,6 +31,10 @@ class UserProfile {
     String? displayName,
     String? photoUrl,
     List<String>? fcmTokens,
+    int? reportsCount,
+    int? foundCount,
+    int? lostCount,
+    String? bio,
     DateTime? updatedAt,
   }) {
     return UserProfile(
@@ -31,6 +43,10 @@ class UserProfile {
       email: email,
       photoUrl: photoUrl ?? this.photoUrl,
       fcmTokens: fcmTokens ?? this.fcmTokens,
+      reportsCount: reportsCount ?? this.reportsCount,
+      foundCount: foundCount ?? this.foundCount,
+      lostCount: lostCount ?? this.lostCount,
+      bio: bio ?? this.bio,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
@@ -45,6 +61,10 @@ class UserProfile {
       fcmTokens: ((map['fcmTokens'] as List?) ?? const [])
           .map((e) => e.toString())
           .toList(),
+      reportsCount: (map['reportsCount'] as num?)?.toInt() ?? 0,
+      foundCount: (map['foundCount'] as num?)?.toInt() ?? 0,
+      lostCount: (map['lostCount'] as num?)?.toInt() ?? 0,
+      bio: map['bio'] as String?,
       createdAt: _toDate(map['createdAt']),
       updatedAt: _toDate(map['updatedAt']),
     );
@@ -56,6 +76,10 @@ class UserProfile {
       'email': email,
       'photoUrl': photoUrl,
       'fcmTokens': fcmTokens,
+      'reportsCount': reportsCount,
+      'foundCount': foundCount,
+      'lostCount': lostCount,
+      'bio': bio,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };

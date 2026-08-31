@@ -6,10 +6,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
+import '../data/firestore/item_repository.dart';
+import '../models/lost_found_item.dart';
 import '../models/post_model.dart';
 import '../models/user_profile.dart';
 
-/// Manages profile state: user data, posts, avatar updates, and profile edits.
+/// Manages profile state: user data, posts, avatar updates, profile edits,
+/// and user report statistics (Reports/Found/Lost counts).
 ///
 /// Wraps Firestore streams for real-time updates and Firebase Storage for
 /// avatar/post image uploads.
@@ -22,14 +25,23 @@ class ProfileProvider extends ChangeNotifier {
   List<PostModel> _posts = [];
   bool _isLoading = false;
 
+  int _reportsCount = 0;
+  int _foundCount = 0;
+  int _lostCount = 0;
+
   UserProfile? get user => _user;
   List<PostModel> get posts => _posts;
   bool get isLoading => _isLoading;
 
+  int get reportsCount => _reportsCount;
+  int get foundCount => _foundCount;
+  int get lostCount => _lostCount;
+
   StreamSubscription? _userSub;
   StreamSubscription? _postsSub;
+  StreamSubscription? _itemsSub;
 
-  /// Starts listening to the current user's profile and posts in Firestore.
+  /// Starts listening to the current user's profile, posts, and items in Firestore.
   void startListening() {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
@@ -55,12 +67,21 @@ class ProfileProvider extends ChangeNotifier {
           .toList();
       notifyListeners();
     }, onError: (_) {});
+
+    // Listen to user's items to compute report statistics
+    _itemsSub = ItemRepository().streamUserItems(uid).listen((items) {
+      _reportsCount = items.length;
+      _foundCount = items.where((i) => i.kind == ItemKind.found).length;
+      _lostCount = items.where((i) => i.kind == ItemKind.lost).length;
+      notifyListeners();
+    }, onError: (_) {});
   }
 
   /// Stops Firestore listeners to prevent memory leaks.
   void stopListening() {
     _userSub?.cancel();
     _postsSub?.cancel();
+    _itemsSub?.cancel();
   }
 
   /// Uploads a new post image and saves it to Firestore.

@@ -62,6 +62,13 @@ android {
             )
         }
     }
+
+    // Strip ProfileInstaller entirely — it causes disk I/O that
+    // kills ADB connections on budget Infinix devices.
+    // Only needed for release profiling; safe to remove for dev builds.
+    configurations.configureEach {
+        exclude(group = "androidx.profileinstaller", module = "profileinstaller")
+    }
 }
 
 kotlin {

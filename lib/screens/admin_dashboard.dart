@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cloud_functions/cloud_functions.dart';
@@ -13,6 +16,8 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/image_picker_sheet.dart';
+import '../widgets/metric_counter.dart';
 import 'admin_inbox_screen.dart';
 import 'admin_review_queue_screen.dart';
 import 'auth/login.dart';
@@ -155,6 +160,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _NavItem(label: 'Reports', icon: Icons.receipt_long_rounded),
     _NavItem(label: 'Users', icon: Icons.people_alt_rounded),
     _NavItem(label: 'Messages', icon: Icons.chat_bubble_rounded),
+    _NavItem(label: 'Profile', icon: Icons.person_rounded),
     _NavItem(label: 'Settings', icon: Icons.settings_rounded),
     _NavItem(label: 'Logout', icon: Icons.logout_rounded, logout: true),
   ];
@@ -241,6 +247,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 5:
         return _UsersSection(usersStream: _usersListStream);
       case 7:
+        return _AdminProfileSection(
+          adminUid: _auth.currentUser?.uid ?? '',
+          adminName: adminName,
+          adminEmail: _adminEmail(),
+        );
+      case 8:
         return _SettingsSection(onNotice: _showNotice);
       default:
         final item = sections[_selectedIndex];
@@ -2337,6 +2349,370 @@ class _UserRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 60),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Admin profile section ───────────────────────────────────────────────────
+
+class _AdminProfileSection extends StatefulWidget {
+  const _AdminProfileSection({
+    required this.adminUid,
+    required this.adminName,
+    required this.adminEmail,
+  });
+
+  final String adminUid;
+  final String adminName;
+  final String adminEmail;
+
+  @override
+  State<_AdminProfileSection> createState() => _AdminProfileSectionState();
+}
+
+class _AdminProfileSectionState extends State<_AdminProfileSection> {
+  late TextEditingController _nameCtrl;
+  late TextEditingController _bioCtrl;
+  bool _saving = false;
+  bool _editing = false;
+  String? _photoUrl;
+  int _reportsCount = 0;
+  int _foundCount = 0;
+  int _lostCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.adminName);
+    _bioCtrl = TextEditingController(text: '');
+    _loadProfile();
+    _loadStats();
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _bioCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    if (widget.adminUid.isEmpty) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.adminUid)
+          .get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        setState(() {
+          _nameCtrl.text = (data['displayName'] as String?) ?? widget.adminName;
+          _bioCtrl.text = (data['bio'] as String?) ?? '';
+          _photoUrl = data['photoUrl'] as String?;
+        });
+      }
+    } catch (e) {
+      debugPrint('[AdminProfile] _loadProfile error: $e');
+    }
+  }
+
+  Future<void> _loadStats() async {
+    if (widget.adminUid.isEmpty) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('items')
+          .where('ownerUid', isEqualTo: widget.adminUid)
+          .get();
+      final items = snap.docs;
+      setState(() {
+        _reportsCount = items.length;
+        _foundCount = items
+            .where((d) => (d.data()['kind'] as String?) == 'found')
+            .length;
+        _lostCount = items
+            .where((d) => (d.data()['kind'] as String?) == 'lost')
+            .length;
+      });
+    } catch (e) {
+      debugPrint('[AdminProfile] _loadStats error: $e');
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.adminUid)
+          .update({
+        'displayName': _nameCtrl.text.trim(),
+        'bio': _bioCtrl.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        setState(() => _editing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _pickAvatar() async {
+    final file = await pickImageWithPreview(
+      context,
+      maxWidth: 512,
+      maxHeight: 512,
+    );
+    if (file == null || !mounted) return;
+    try {
+      final ref = FirebaseStorage.instance
+          .ref('profiles/${widget.adminUid}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref.putFile(file);
+      final url = await ref.getDownloadURL();
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.adminUid)
+          .update({'photoUrl': url});
+      setState(() => _photoUrl = url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update avatar: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Admin Profile',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.cardBorder),
+              boxShadow: AppColors.softShadow,
+            ),
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _pickAvatar,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: _photoUrl == null
+                              ? AppColors.heroGradient
+                              : null,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.25),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: _photoUrl != null
+                              ? CachedNetworkImage(
+                                  imageUrl: _photoUrl!,
+                                  fit: BoxFit.cover,
+                                  width: 96,
+                                  height: 96,
+                                  placeholder: (_, _) => const Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                  errorWidget: (_, _, _) => const Icon(
+                                    Icons.person_rounded,
+                                    size: 44,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.person_rounded,
+                                  size: 44,
+                                  color: Colors.white,
+                                ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: const BoxDecoration(
+                            color: AppColors.surface,
+                            shape: BoxShape.circle,
+                            boxShadow: AppColors.softShadow,
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 17,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (!_editing) ...[
+                  Text(
+                    _nameCtrl.text.isNotEmpty ? _nameCtrl.text : 'Admin',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.adminEmail,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  if (_bioCtrl.text.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _bioCtrl.text,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      MetricCounter(
+                          value: _reportsCount, label: 'Reports'),
+                      const SizedBox(width: 32),
+                      MetricCounter(
+                          value: _foundCount, label: 'Found'),
+                      const SizedBox(width: 32),
+                      MetricCounter(
+                          value: _lostCount, label: 'Lost'),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: 200,
+                    child: OutlinedButton(
+                      onPressed: () => setState(() => _editing = true),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: const BorderSide(color: AppColors.border),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: const Text('Edit Profile'),
+                    ),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: _nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Display Name',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _bioCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Bio',
+                      hintText: 'Tell us about yourself',
+                      prefixIcon: Icon(Icons.info_outline_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => setState(() => _editing = false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textSecondary,
+                          side: const BorderSide(color: AppColors.border),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: _saving ? null : _save,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );

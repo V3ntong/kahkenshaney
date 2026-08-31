@@ -21,7 +21,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     final user = context.read<ProfileProvider>().user;
     _nameCtrl = TextEditingController(text: user?.displayName ?? '');
-    _bioCtrl = TextEditingController(text: '');
+    _bioCtrl = TextEditingController(text: user?.bio ?? '');
   }
 
   @override
@@ -37,6 +37,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       await context.read<ProfileProvider>().updateProfile(
             displayName: _nameCtrl.text.trim(),
+            bio: _bioCtrl.text.trim(),
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
