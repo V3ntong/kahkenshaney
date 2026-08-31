@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../services/auth_service.dart' show kAdminEmail;
+
 /// Firestore data service for the Lost & Found app.
 ///
 /// Provides CRUD operations for items and user profiles.
@@ -117,7 +119,7 @@ class DatabaseService {
     try {
       // Check if this email is the admin email.
       final isAdmin = email.trim().toLowerCase() ==
-          'mugiwaranomelvin@gmail.com'.toLowerCase();
+          kAdminEmail.toLowerCase();
 
       await _db.collection('users').doc(uid).set({
         'email': email,
@@ -130,6 +132,31 @@ class DatabaseService {
     } on FirebaseException catch (e) {
       debugPrint('[DatabaseService] createUserProfile error: ${e.code}');
       throw DatabaseException('Failed to create profile.');
+    }
+  }
+
+  /// Ensures the admin user document has `isAdmin: true`.
+  ///
+  /// Called on admin dashboard load so the Firestore `isAdmin()` helper
+  /// function passes, allowing the admin to read/write chat documents.
+  Future<void> ensureAdminProfile({
+    required String uid,
+    required String email,
+    String? displayName,
+  }) async {
+    try {
+      final isAdmin = email.trim().toLowerCase() ==
+          kAdminEmail.toLowerCase();
+      if (!isAdmin) return;
+
+      await _db.collection('users').doc(uid).set({
+        'email': email,
+        'displayName': displayName ?? '',
+        'isAdmin': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      debugPrint('[DatabaseService] ensureAdminProfile error: ${e.code}');
     }
   }
 

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/lost_found_item.dart';
+import '../screens/notifications_screen.dart';
+import '../screens/profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/keep_alive_wrapper.dart';
@@ -15,16 +17,22 @@ class HomePage extends StatefulWidget {
     super.key,
     this.userName,
     this.userEmail,
+    this.photoUrl,
     this.ownerUid,
     this.onChangePassword,
     this.onSignOut,
+    this.onTabChanged,
+    this.unreadCount = 0,
   });
 
   final String? userName;
   final String? userEmail;
+  final String? photoUrl;
   final String? ownerUid;
   final VoidCallback? onChangePassword;
   final VoidCallback? onSignOut;
+  final ValueChanged<int>? onTabChanged;
+  final int unreadCount;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -38,12 +46,18 @@ class _HomePageState extends State<HomePage> {
     KeepAliveWrapper(
       child: HomeFeed(
         userName: widget.userName,
+        photoUrl: widget.photoUrl,
         ownerUid: widget.ownerUid,
         onAiScan: () => _comingSoon('AI Scan'),
         onTabSelected: _goToTab,
         onComingSoon: _comingSoon,
         onNotifications: _showNotifications,
-        onProfile: () => _comingSoon('Profile'),
+        onProfile: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          );
+        },
         onChangePassword: widget.onChangePassword,
         onSignOut: widget.onSignOut,
       ),
@@ -96,7 +110,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showNotifications() {
-    _comingSoon('Notifications');
+    if (widget.ownerUid == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationsScreen(userId: widget.ownerUid!),
+      ),
+    );
   }
 
   @override
@@ -112,11 +132,15 @@ class _HomePageState extends State<HomePage> {
       body: TabSwitcher(
         controller: _pageController,
         pages: _pages,
-        onPageChanged: (index) => setState(() => _selectedIndex = index),
+        onPageChanged: (index) {
+          setState(() => _selectedIndex = index);
+          widget.onTabChanged?.call(index);
+        },
       ),
       bottomNavigationBar: HomeBottomNav(
         selectedIndex: _selectedIndex,
         onSelected: _goToTab,
+        unreadCount: widget.unreadCount,
       ),
     );
   }

@@ -1,10 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
-  Future<void> initialize() async {
+  /// Initializes notification permissions, saves FCM token to Firestore,
+  /// and sets up message listeners.
+  ///
+  /// Call this after the user logs in with their [userId].
+  Future<void> initialize({String? userId}) async {
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -19,8 +24,17 @@ class NotificationService {
     final token = await _messaging.getToken();
     debugPrint('[NotificationService] FCM Token: $token');
 
-    _messaging.onTokenRefresh.listen((newToken) {
+    // Save token to Firestore if userId is provided
+    if (userId != null && token != null) {
+      await _saveTokenToFirestore(userId, token);
+    }
+
+    // Listen for token refresh and update Firestore
+    _messaging.onTokenRefresh.listen((newToken) async {
       debugPrint('[NotificationService] FCM Token refreshed: $newToken');
+      if (userId != null) {
+        await _saveTokenToFirestore(userId, newToken);
+      }
     });
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -43,6 +57,20 @@ class NotificationService {
         '[NotificationService] Notification opened from terminated: '
         '${initialMessage.notification?.title}',
       );
+    }
+  }
+
+  /// Saves or updates the FCM token in the user's Firestore document.
+  ///
+  /// Uses arrayUnion to add the token if it doesn't already exist.
+  Future<void> _saveTokenToFirestore(String userId, String token) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'fcmTokens': FieldValue.arrayUnion([token]),
+      });
+      debugPrint('[NotificationService] FCM token saved for user: $userId');
+    } catch (e) {
+      debugPrint('[NotificationService] Error saving FCM token: $e');
     }
   }
 }

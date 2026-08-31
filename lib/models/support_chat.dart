@@ -12,6 +12,8 @@ class SupportChat {
     this.lastMessageAt,
     this.unreadByAdmin = false,
     this.unreadByUser = false,
+    this.unreadByAdminCount = 0,
+    this.unreadByUserCount = 0,
   });
 
   final String id;
@@ -20,6 +22,8 @@ class SupportChat {
   final DateTime? lastMessageAt;
   final bool unreadByAdmin;
   final bool unreadByUser;
+  final int unreadByAdminCount;
+  final int unreadByUserCount;
 
   /// The UID of the non-admin participant (the user).
   String get userId => id;
@@ -34,6 +38,8 @@ class SupportChat {
       lastMessageAt: _toDate(map['lastMessageAt']),
       unreadByAdmin: map['unreadByAdmin'] as bool? ?? false,
       unreadByUser: map['unreadByUser'] as bool? ?? false,
+      unreadByAdminCount: (map['unreadByAdminCount'] as num?)?.toInt() ?? 0,
+      unreadByUserCount: (map['unreadByUserCount'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -44,6 +50,8 @@ class SupportChat {
       'lastMessageAt': lastMessageAt,
       'unreadByAdmin': unreadByAdmin,
       'unreadByUser': unreadByUser,
+      'unreadByAdminCount': unreadByAdminCount,
+      'unreadByUserCount': unreadByUserCount,
     };
   }
 

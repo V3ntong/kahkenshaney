@@ -33,9 +33,6 @@ class _OtpInputState extends State<OtpInput> {
       (_) => TextEditingController(),
     );
     _focusNodes = List.generate(widget.length, (_) => FocusNode());
-    for (var i = 0; i < widget.length; i++) {
-      _controllers[i].addListener(() => _onChanged(i));
-    }
   }
 
   @override
@@ -49,18 +46,21 @@ class _OtpInputState extends State<OtpInput> {
     super.dispose();
   }
 
-  void _onChanged(int index) {
-    final text = _controllers[index].text;
+  void _onChanged(int index, String value) {
     if (!mounted) return;
 
-    if (text.length > 1) {
-      _controllers[index].text = text.substring(text.length - 1);
+    // If the user pasted or somehow entered multiple characters, keep only
+    // the last digit and place it in this box.
+    if (value.length > 1) {
+      _controllers[index].text = value.substring(value.length - 1);
       _controllers[index].selection = TextSelection.collapsed(
         offset: _controllers[index].text.length,
       );
+      return; // listener on the controller will re-trigger this method
     }
 
-    if (text.isNotEmpty) {
+    if (value.isNotEmpty) {
+      // Advance to the next empty box.
       var next = index + 1;
       while (next < widget.length && _controllers[next].text.isNotEmpty) {
         next++;
@@ -68,10 +68,9 @@ class _OtpInputState extends State<OtpInput> {
       if (next < widget.length) {
         _focusNodes[next].requestFocus();
       } else {
+        // Last box — dismiss keyboard.
         _focusNodes[index].unfocus();
       }
-    } else if (index > 0) {
-      _focusNodes[index - 1].requestFocus();
     }
 
     if (_code.length == widget.length) {
@@ -84,6 +83,7 @@ class _OtpInputState extends State<OtpInput> {
         event.logicalKey == LogicalKeyboardKey.backspace &&
         _controllers[index].text.isEmpty &&
         index > 0) {
+      _controllers[index - 1].clear();
       _focusNodes[index - 1].requestFocus();
       return KeyEventResult.handled;
     }
@@ -119,6 +119,7 @@ class _OtpInputState extends State<OtpInput> {
                     keyboardType: TextInputType.number,
                     maxLength: 1,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (value) => _onChanged(index, value),
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,

@@ -40,6 +40,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+
         release {
             val keystorePath = System.getenv("KEYSTORE_PATH")
             signingConfig = if (keystorePath != null) {

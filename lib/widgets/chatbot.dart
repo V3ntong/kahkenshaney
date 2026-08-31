@@ -47,7 +47,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _chatService = ChatService();
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -70,33 +69,32 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _isLoading) return;
+    if (text.isEmpty) return;
 
-    setState(() {
-      _isLoading = true;
-      _controller.clear();
-    });
+    _controller.clear();
 
     // Add user message to history immediately so it shows in the UI
     _chatService.addUserMessage(text);
     setState(() {});
     _scrollToBottom();
 
-    final reply = await _chatService.sendMessage(text);
+    // Fire-and-forget: let the stream of history updates handle display.
+    _chatService.sendMessage(text).then((reply) {
+      if (!mounted) return;
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    // Show the returned text even when it's an error/empty response.
-    // sendMessage only records successful model replies in history, so
-    // without this the UI would silently drop every non-200 reply.
-    final history = _chatService.history;
-    if (reply.isNotEmpty &&
-        (history.isEmpty || history.last.text != reply)) {
-      _chatService.addAssistantMessage(reply);
-      setState(() {});
-    }
-    _scrollToBottom();
+      final history = _chatService.history;
+      if (reply.isNotEmpty &&
+          (history.isEmpty || history.last.text != reply)) {
+        _chatService.addAssistantMessage(reply);
+        setState(() {});
+      }
+      _scrollToBottom();
+    }).catchError((e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to get response. Please try again.')),
+      );
+    });
   }
 
   @override
@@ -120,7 +118,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _buildWelcome()
                     : _buildMessages(),
               ),
-              if (_isLoading) const _TypingIndicator(),
               _buildInput(),
             ],
           ),
@@ -318,12 +315,12 @@ class _ChatScreenState extends State<ChatScreen> {
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(
-              color: _isLoading ? AppColors.textTertiary : AppColors.primary,
+            decoration: const BoxDecoration(
+              color: AppColors.primary,
               shape: BoxShape.circle,
             ),
             child: IconButton(
-              onPressed: _isLoading ? null : _send,
+              onPressed: _send,
               icon: const Icon(
                 Icons.send_rounded,
                 color: Colors.white,
@@ -373,105 +370,6 @@ class _MessageBubble extends StatelessWidget {
             height: 1.5,
             color: isUser ? Colors.white : AppColors.textPrimary,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator();
-
-  @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
-}
-
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(left: 16, bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.cardBorder),
-        ),
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            return ShaderMask(
-              shaderCallback: (bounds) {
-                return LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: const [
-                    AppColors.surfaceVariant,
-                    AppColors.cardBorder,
-                    AppColors.surfaceVariant,
-                  ],
-                  stops: [
-                    (_controller.value - 0.3).clamp(0.0, 1.0),
-                    _controller.value,
-                    (_controller.value + 0.3).clamp(0.0, 1.0),
-                  ],
-                ).createShader(bounds);
-              },
-              blendMode: BlendMode.srcATop,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    height: 10,
-                    width: 160,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    height: 10,
-                    width: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    height: 10,
-                    width: 80,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
         ),
       ),
     );

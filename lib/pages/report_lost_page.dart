@@ -75,6 +75,7 @@ class _ReportLostPageState extends State<ReportLostPage> {
         title: _itemNameController.text.trim(),
         description: _colorController.text.trim(),
         ownerUid: _currentUid(),
+        category: _category,
         location: _locationController.text.trim(),
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),

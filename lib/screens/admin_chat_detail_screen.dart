@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../data/firestore/support_chat_service.dart';
 import '../models/support_message.dart';
@@ -24,21 +29,45 @@ class AdminChatDetailScreen extends StatefulWidget {
 }
 
 class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
-  late final SupportChatService _chatService;
+  SupportChatService? _chatService;
   late final TextEditingController _controller;
   late final ScrollController _scrollController;
   final _focusNode = FocusNode();
   String _userName = 'User';
   bool _loadingName = true;
+  bool _ready = false;
+  bool _readMarked = false;
+  String? _resolvedAdminUid;
 
   @override
   void initState() {
     super.initState();
-    _chatService = SupportChatService(adminUid: widget.adminUid);
     _controller = TextEditingController();
     _scrollController = ScrollController();
+    _resolveAdminAndInit();
+  }
+
+  /// Looks up the real admin UID from Firestore, then initializes the
+  /// chat service and ensures the admin is in the participants array.
+  Future<void> _resolveAdminAndInit() async {
+    // Look up the real admin UID from the users collection.
+    final realUid = await SupportChatService.lookupAdminUid(null);
+    final adminUid = realUid ?? widget.adminUid;
+
+    if (!mounted) return;
+
+    final service = SupportChatService(adminUid: adminUid);
+
+    // Ensure the admin is in the participants array (fixes orphaned chats).
+    await service.ensureParticipant(widget.chatId, adminUid);
+
+    if (!mounted) return;
+    setState(() {
+      _resolvedAdminUid = adminUid;
+      _chatService = service;
+      _ready = true;
+    });
     _loadUserName();
-    _markAsRead();
   }
 
   @override
@@ -50,7 +79,7 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
   }
 
   Future<void> _loadUserName() async {
-    final name = await _chatService.getUserDisplayName(widget.chatId);
+    final name = await _chatService?.getUserDisplayName(widget.chatId) ?? 'User';
     if (!mounted) return;
     setState(() {
       _userName = name;
@@ -59,37 +88,62 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
   }
 
   Future<void> _markAsRead() async {
-    await _chatService.markReadByAdmin(widget.chatId);
+    await _chatService?.markReadByAdmin(widget.chatId);
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage({String? imageUrl}) async {
+    if (!_ready || _chatService == null) return;
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && imageUrl == null) return;
 
     _controller.clear();
     _focusNode.requestFocus();
 
-    try {
-      await _chatService.sendMessage(
-        chatId: widget.chatId,
-        senderId: widget.adminUid,
-        text: text,
-        isAdmin: true,
-      );
-      // Scroll to bottom after sending.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    } catch (e) {
+    final adminUid = _resolvedAdminUid ?? widget.adminUid;
+
+    // Fire-and-forget: let the stream display the message.
+    _chatService!.sendMessage(
+      chatId: widget.chatId,
+      senderId: adminUid,
+      text: text,
+      isAdmin: true,
+      imageUrl: imageUrl,
+    ).catchError((e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to send message. Please try again.')),
+      );
+    });
+
+    // Scroll to bottom after sending.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _pickAndSendImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked == null || !mounted) return;
+
+    try {
+      final file = File(picked.path);
+      final fileName = 'chat_${widget.chatId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref('chat_images/$fileName');
+      await ref.putFile(file);
+      final url = await ref.getDownloadURL();
+      if (!mounted) return;
+      _sendMessage(imageUrl: url);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to upload image. Please try again.')),
       );
     }
   }
@@ -126,12 +180,16 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: _chatService == null
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          : Column(
         children: [
           // ── Messages list ────────────────────────────────────
           Expanded(
             child: StreamBuilder<List<SupportMessage>>(
-              stream: _chatService.streamMessages(widget.chatId),
+              stream: _chatService!.streamMessages(widget.chatId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(
@@ -174,13 +232,19 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
                   return _buildEmptyState();
                 }
 
+                // Mark as read once messages are visible (not on init).
+                if (!_readMarked) {
+                  _readMarked = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _markAsRead());
+                }
+
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
-                    final isMe = msg.senderId == widget.adminUid;
+                    final isMe = msg.senderId == (_resolvedAdminUid ?? widget.adminUid);
                     return _AdminMessageBubble(
                       message: msg,
                       isMe: isMe,
@@ -196,6 +260,7 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
             controller: _controller,
             focusNode: _focusNode,
             onSend: _sendMessage,
+            onImagePick: _pickAndSendImage,
           ),
         ],
       ),
@@ -259,8 +324,26 @@ class _AdminMessageBubble extends StatelessWidget {
   final SupportMessage message;
   final bool isMe;
 
+  void _openFullScreen(BuildContext context, String imageUrl) {
+    HapticFeedback.mediumImpact();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        barrierDismissible: true,
+        transitionDuration: const Duration(milliseconds: 250),
+        pageBuilder: (_, __, ___) => _FullScreenImage(imageUrl: imageUrl),
+        transitionsBuilder: (_, anim, __, child) {
+          return FadeTransition(opacity: anim, child: child);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasImage = message.imageUrl != null && message.imageUrl!.isNotEmpty;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -283,14 +366,66 @@ class _AdminMessageBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              message.text,
-              style: TextStyle(
-                fontSize: 14,
-                color: isMe ? Colors.white : AppColors.textPrimary,
-                height: 1.4,
+            if (hasImage)
+              GestureDetector(
+                onLongPress: () => _openFullScreen(context, message.imageUrl!),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    message.imageUrl!,
+                    width: 200,
+                    height: 150,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return Container(
+                        width: 200,
+                        height: 150,
+                        decoration: BoxDecoration(
+                          color: isMe
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 200,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        color: isMe
+                            ? Colors.white.withValues(alpha: 0.15)
+                            : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.broken_image_rounded,
+                        size: 36,
+                        color: isMe
+                            ? Colors.white.withValues(alpha: 0.5)
+                            : AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
+            if (hasImage && message.text.isNotEmpty) const SizedBox(height: 6),
+            if (message.text.isNotEmpty)
+              Text(
+                message.text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isMe ? Colors.white : AppColors.textPrimary,
+                  height: 1.4,
+                ),
+              ),
             const SizedBox(height: 4),
             Text(
               _formatTime(message.timestamp),
@@ -317,6 +452,57 @@ class _AdminMessageBubble extends StatelessWidget {
   }
 }
 
+// ── Full-Screen Image Viewer (Admin) ─────────────────────────────────────
+
+class _FullScreenImage extends StatelessWidget {
+  const _FullScreenImage({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(Icons.broken_image_rounded,
+                        size: 48, color: Colors.white54),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 16,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded,
+                    color: Colors.white, size: 28),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Input Bar (Admin version) ─────────────────────────────────────────────
 
 class _AdminInputBar extends StatelessWidget {
@@ -324,11 +510,13 @@ class _AdminInputBar extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onSend,
+    this.onImagePick,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSend;
+  final VoidCallback? onImagePick;
 
   @override
   Widget build(BuildContext context) {
@@ -342,6 +530,13 @@ class _AdminInputBar extends StatelessWidget {
         top: false,
         child: Row(
           children: [
+            if (onImagePick != null)
+              IconButton(
+                icon: const Icon(Icons.add_photo_alternate_rounded, size: 22),
+                color: AppColors.textSecondary,
+                onPressed: onImagePick,
+                tooltip: 'Send image',
+              ),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(

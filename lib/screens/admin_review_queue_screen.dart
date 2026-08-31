@@ -6,6 +6,11 @@ import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
 import '../widgets/status_tracker_widget.dart';
 
+const _monthAbbr = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 /// Admin review queue — lists all pending items with approve/reject/status controls.
 class AdminReviewQueueScreen extends StatefulWidget {
   const AdminReviewQueueScreen({
@@ -248,6 +253,13 @@ class _ReviewCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
                         ),
                       ],
+                      if (item.createdAt != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatDate(item.createdAt!),
+                          style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -280,6 +292,14 @@ class _ReviewCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    final h = date.hour;
+    final m = date.minute.toString().padLeft(2, '0');
+    final period = h >= 12 ? 'PM' : 'AM';
+    final hour12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '${_monthAbbr[date.month - 1]} ${date.day}, ${date.year}  $hour12:$m $period';
   }
 }
 

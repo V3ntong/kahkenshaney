@@ -10,6 +10,7 @@ class SupportMessage {
     this.id,
     this.isAdmin = false,
     this.timestamp,
+    this.imageUrl,
   });
 
   final String? id;
@@ -17,6 +18,7 @@ class SupportMessage {
   final String text;
   final bool isAdmin;
   final DateTime? timestamp;
+  final String? imageUrl;
 
   factory SupportMessage.fromMap(String id, Map<String, dynamic> map) {
     return SupportMessage(
@@ -25,6 +27,7 @@ class SupportMessage {
       text: (map['text'] as String?) ?? '',
       isAdmin: map['isAdmin'] as bool? ?? false,
       timestamp: _toDate(map['timestamp']),
+      imageUrl: map['imageUrl'] as String?,
     );
   }
 
@@ -34,6 +37,7 @@ class SupportMessage {
       'text': text,
       'isAdmin': isAdmin,
       'timestamp': timestamp,
+      if (imageUrl != null) 'imageUrl': imageUrl,
     };
   }
 

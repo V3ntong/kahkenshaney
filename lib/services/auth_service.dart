@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import 'otp_api.dart';
 
@@ -9,11 +11,34 @@ import 'otp_api.dart';
 /// used both by the post-login redirect and the admin dashboard guard.
 const String kAdminEmail = 'mugiwaranomelvin@gmail.com';
 
-/// The UID of the admin account used for support chats.
+/// Cached admin UID fetched from Firestore.
+String? _cachedAdminUid;
+
+/// Looks up the admin UID from Firestore by querying the `users` collection
+/// for the document where `isAdmin == true`.
 ///
-/// This must match the Firebase Auth UID of the admin account.
-/// Update this value after the admin account is created.
-const String kAdminUid = 'REPLACE_WITH_ADMIN_UID';
+/// Returns the UID of the first admin found, or null if no admin is found.
+/// Caches the result for subsequent calls.
+Future<String?> lookupAdminUid() async {
+  if (_cachedAdminUid != null) return _cachedAdminUid;
+
+  try {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('isAdmin', isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      _cachedAdminUid = snapshot.docs.first.id;
+      debugPrint('[AuthService] Admin UID resolved: $_cachedAdminUid');
+      return _cachedAdminUid;
+    }
+  } catch (e) {
+    debugPrint('[AuthService] lookupAdminUid error: $e');
+  }
+  return null;
+}
 
 /// Whether [email] matches the designated admin email (case-insensitive).
 bool isAdminEmail(String? email) {

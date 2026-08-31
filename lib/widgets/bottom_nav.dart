@@ -14,10 +14,12 @@ class HomeBottomNav extends StatelessWidget {
     super.key,
     required this.selectedIndex,
     required this.onSelected,
+    this.unreadCount = 0,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+  final int unreadCount;
 
   static const _tabs = [
     (Icons.home_rounded, Icons.home_outlined, 'Home'),
@@ -86,6 +88,7 @@ class HomeBottomNav extends StatelessWidget {
                           outlineIcon: _tabs[i].$2,
                           label: _tabs[i].$3,
                           selected: selectedIndex == i,
+                          unreadCount: i == 4 ? unreadCount : 0,
                           onTap: () => onSelected(i),
                         ),
                     ],
@@ -107,6 +110,7 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.unreadCount = 0,
   });
 
   final IconData icon;
@@ -114,6 +118,7 @@ class _NavItem extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -129,6 +134,7 @@ class _NavItem extends StatelessWidget {
           icon: icon,
           outlineIcon: outlineIcon,
           label: label,
+          unreadCount: unreadCount,
         ),
       ),
     );
@@ -142,12 +148,14 @@ class _AnimatedNavItem extends StatelessWidget {
     required this.icon,
     required this.outlineIcon,
     required this.label,
+    this.unreadCount = 0,
   });
 
   final bool selected;
   final IconData icon;
   final IconData outlineIcon;
   final String label;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -167,13 +175,43 @@ class _AnimatedNavItem extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Transform.scale(
-              scale: 0.92 + 0.08 * value,
-              child: Icon(
-                value > 0.5 ? icon : outlineIcon,
-                size: iconSize,
-                color: color,
-              ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Transform.scale(
+                  scale: 0.92 + 0.08 * value,
+                  child: Icon(
+                    value > 0.5 ? icon : outlineIcon,
+                    size: iconSize,
+                    color: color,
+                  ),
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.error,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.surface, width: 1.5),
+                      ),
+                      child: Center(
+                        child: Text(
+                          unreadCount > 99 ? '99+' : '$unreadCount',
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 3),
             Opacity(

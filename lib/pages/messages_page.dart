@@ -22,14 +22,73 @@ class MessagesPage extends StatelessWidget {
       return const _NotSignedIn();
     }
 
-    // If the current user is the admin, redirect to admin dashboard.
-    if (userId == kAdminUid) {
-      return const _AdminNotice();
-    }
+    return FutureBuilder<String?>(
+      future: lookupAdminUid(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          );
+        }
 
-    return UserChatScreen(
-      userId: userId!,
-      adminUid: kAdminUid,
+        final adminUid = snapshot.data;
+
+        // If admin UID couldn't be resolved, show error
+        if (adminUid == null) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: const BoxDecoration(
+                      color: AppColors.warningSurface,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.error_outline_rounded,
+                      size: 36,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Admin not found',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Could not find an admin account. Please try again later.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // If the current user is the admin, redirect to admin dashboard.
+        if (userId == adminUid) {
+          return const _AdminNotice();
+        }
+
+        return UserChatScreen(
+          userId: userId!,
+          adminUid: adminUid,
+        );
+      },
     );
   }
 }

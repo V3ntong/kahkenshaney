@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../pages/home_page.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
@@ -26,6 +30,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   late final AnimationController _welcomeFade;
   bool _welcomeVisible = true;
+  int _currentTab = 0;
+  int _unreadCount = 0;
 
   @override
   void initState() {
@@ -33,18 +39,43 @@ class _DashboardScreenState extends State<DashboardScreen>
     _welcomeFade = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
-    );
-    _welcomeFade.forward();
+    )..forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _guardRoute();
+      _listenUnread();
+      _initNotifications();
     });
   }
 
   @override
   void dispose() {
     _welcomeFade.dispose();
+    _unreadSub?.cancel();
     super.dispose();
+  }
+
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _unreadSub;
+
+  void _listenUnread() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    _unreadSub = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(uid)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      final data = snap.data();
+      final count = (data?['unreadByUserCount'] as num?)?.toInt() ?? 0;
+      setState(() => _unreadCount = count);
+    }, onError: (_) {});
+  }
+
+  void _initNotifications() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    NotificationService().initialize(userId: uid);
   }
 
   void _dismissWelcome() {
@@ -101,17 +132,21 @@ class _DashboardScreenState extends State<DashboardScreen>
         ? user.displayName!.trim()
         : 'there';
     final email = user.email ?? '';
+    final photoUrl = user.photoURL;
 
     return Stack(
       children: [
         HomePage(
           userName: displayName,
           userEmail: email,
+          photoUrl: photoUrl,
           ownerUid: _auth.currentUser?.uid,
           onChangePassword: _goToChangePassword,
           onSignOut: _signOut,
+          onTabChanged: (index) => setState(() => _currentTab = index),
+          unreadCount: _unreadCount,
         ),
-        const ChatbotButton(),
+        if (_currentTab != 4) const ChatbotButton(),
         if (_welcomeVisible) _buildWelcomeOverlay(displayName),
       ],
     );

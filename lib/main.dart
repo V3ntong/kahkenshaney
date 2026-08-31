@@ -1,13 +1,14 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
 import 'mainpage.dart';
 import 'pages/choose_action_page.dart';
 import 'pages/report_lost_page.dart';
 import 'pages/submit_found_page.dart';
-import 'services/notification_service.dart';
+import 'providers/profile_provider.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
 
@@ -21,7 +22,6 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     firebaseReady = true;
-    NotificationService().initialize();
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }
@@ -45,16 +45,19 @@ class AmongApp extends StatelessWidget {
       );
     }
 
-    return MaterialApp(
-      title: 'KAH KEN SHA NEY',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      home: const MainPage(),
-      routes: {
-        '/choose-action': (_) => const ChooseActionPage(),
-        '/report-lost': (_) => const ReportLostPage(),
-        '/submit-found': (_) => const SubmitFoundPage(),
-      },
+    return ChangeNotifierProvider(
+      create: (_) => ProfileProvider(),
+      child: MaterialApp(
+        title: 'KAH KEN SHA NEY',
+        debugShowCheckedModeBanner: false,
+        theme: buildAppTheme(),
+        home: const MainPage(),
+        routes: {
+          '/choose-action': (_) => const ChooseActionPage(),
+          '/report-lost': (_) => const ReportLostPage(),
+          '/submit-found': (_) => const SubmitFoundPage(),
+        },
+      ),
     );
   }
 }

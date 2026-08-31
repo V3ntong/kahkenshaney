@@ -199,6 +199,7 @@ class _ChatTileState extends State<_ChatTile> {
   Widget build(BuildContext context) {
     final chat = widget.chat;
     final hasUnread = chat.unreadByAdmin;
+    final unreadCount = chat.unreadByAdminCount;
     final lastTime = chat.lastMessageAt;
 
     return ListTile(
@@ -218,17 +219,28 @@ class _ChatTileState extends State<_ChatTile> {
               ),
             ),
           ),
-          if (hasUnread)
+          if (hasUnread && unreadCount > 0)
             Positioned(
-              right: 0,
-              top: 0,
+              right: -2,
+              top: -2,
               child: Container(
-                width: 14,
-                height: 14,
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 5),
                 decoration: BoxDecoration(
                   color: AppColors.error,
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.surface, width: 2),
+                ),
+                child: Center(
+                  child: Text(
+                    unreadCount > 99 ? '99+' : '$unreadCount',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1,
+                    ),
+                  ),
                 ),
               ),
             ),

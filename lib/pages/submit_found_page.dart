@@ -75,6 +75,7 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
         title: _category ?? 'Found item',
         description: _colorController.text.trim(),
         ownerUid: _currentUid(),
+        category: _category,
         location: _locationController.text.trim(),
         storageLocation: _storageController.text.trim(),
         createdAt: DateTime.now(),

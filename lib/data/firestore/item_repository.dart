@@ -28,12 +28,15 @@ class ItemRepository {
   /// Public stream — only approved items, filtered by kind.
   ///
   /// Falls back to all items if the composite index is not yet deployed.
-  Stream<List<LostFoundItem>> streamItems({ItemKind? kind}) {
+  Stream<List<LostFoundItem>> streamItems({ItemKind? kind, int? limit}) {
     Query<Map<String, dynamic>> query = _items
         .where('moderationStatus', isEqualTo: 'approved')
         .orderBy('createdAt', descending: true);
     if (kind != null) {
       query = query.where('kind', isEqualTo: kind.firestoreValue);
+    }
+    if (limit != null) {
+      query = query.limit(limit);
     }
     return query.snapshots().handleError((error) {
       debugPrint('[ItemRepository] streamItems error: $error');
@@ -70,7 +73,10 @@ class ItemRepository {
     return _items
         .where('ownerUid', isEqualTo: ownerUid)
         .snapshots()
-        .map((snap) {
+        .handleError((error) {
+      debugPrint('[ItemRepository] streamUserItems error: $error');
+      return const Stream.empty();
+    }).map((snap) {
       final list = snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .toList();
@@ -104,7 +110,10 @@ class ItemRepository {
     return _items
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map(
+        .handleError((error) {
+      debugPrint('[ItemRepository] streamAllItemsForAdmin error: $error');
+      return const Stream.empty();
+    }).map(
           (snap) => snap.docs
               .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
               .toList(),
@@ -120,6 +129,36 @@ class ItemRepository {
   Future<void> updateItemFields(
       String itemId, Map<String, dynamic> fields) async {
     await _items.doc(itemId).update(fields);
+  }
+
+  /// Streams potential matches: approved items of the opposite kind sharing
+  /// the same category, excluding the current item. Used by the AI Match
+  /// section on the Item Details page.
+  Stream<List<LostFoundItem>> streamPotentialMatches({
+    required String currentItemId,
+    required ItemKind currentKind,
+    String? category,
+  }) {
+    if (category == null || category.isEmpty) {
+      return const Stream.empty();
+    }
+    final oppositeKind =
+        currentKind == ItemKind.lost ? ItemKind.found : ItemKind.lost;
+    return _items
+        .where('moderationStatus', isEqualTo: 'approved')
+        .where('kind', isEqualTo: oppositeKind.firestoreValue)
+        .where('category', isEqualTo: category)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .handleError((error) {
+      debugPrint('[ItemRepository] streamPotentialMatches error: $error');
+      return const Stream.empty();
+    }).map(
+      (snap) => snap.docs
+          .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
+          .where((item) => item.id != currentItemId && !item.status.isTerminal)
+          .toList(),
+    );
   }
 
   /// Delete an item.

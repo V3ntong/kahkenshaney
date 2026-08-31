@@ -37,4 +37,25 @@ class AdminRepository {
         .snapshots()
         .map((snap) => snap.docs.length);
   }
+
+  /// Stream of all user documents, ordered by creation time descending.
+  Stream<List<Map<String, dynamic>>> streamUsers() {
+    return _db.collection('users').snapshots().map(
+          (snap) => snap.docs.map((doc) => {
+                'uid': doc.id,
+                ...doc.data(),
+              }).toList(),
+        );
+  }
+
+  /// Stream of total unread message count across all chats for the admin.
+  Stream<int> streamAdminUnreadCount() {
+    return _db.collection('chats').snapshots().map((snap) {
+      var total = 0;
+      for (final doc in snap.docs) {
+        total += (doc.data()['unreadByAdminCount'] as num?)?.toInt() ?? 0;
+      }
+      return total;
+    });
+  }
 }

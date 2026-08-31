@@ -1,11 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../data/firestore/admin_repository.dart';
+import '../data/firestore/database_service.dart';
 import '../mainpage.dart';
 import '../models/lost_found_item.dart';
 import '../services/auth_service.dart';
@@ -44,6 +45,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   AdminRepository? _repository;
   Stream<List<LostFoundItem>>? _itemsStream;
   Stream<int>? _usersStream;
+  Stream<List<Map<String, dynamic>>>? _usersListStream;
+  Stream<int>? _adminUnreadStream;
+  int _adminUnreadCount = 0;
 
   int _selectedIndex = 0;
 
@@ -54,13 +58,48 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _repository = widget.repository ?? AdminRepository();
       _itemsStream = _repository!.streamAllItems();
       _usersStream = _repository!.streamUserCount();
+      _usersListStream = _repository!.streamUsers();
+      _adminUnreadStream = _repository!.streamAdminUnreadCount();
     } catch (_) {
       _repository = null;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _guardRoute();
+      _initProfile();
+      _listenAdminUnread();
     });
+  }
+
+  @override
+  void dispose() {
+    _adminUnreadSub?.cancel();
+    super.dispose();
+  }
+
+  StreamSubscription<int>? _adminUnreadSub;
+
+  void _listenAdminUnread() {
+    _adminUnreadSub = _adminUnreadStream?.listen((count) {
+      if (!mounted) return;
+      setState(() => _adminUnreadCount = count);
+    });
+  }
+
+  /// Writes `isAdmin: true` to the admin's user document so the Firestore
+  /// `isAdmin()` helper passes, enabling chat read/write access.
+  Future<void> _initProfile() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      await DatabaseService().ensureAdminProfile(
+        uid: user.uid,
+        email: user.email ?? '',
+        displayName: user.displayName,
+      );
+    } catch (e) {
+      debugPrint('[AdminDashboard] _ensureAdminProfile error: $e');
+    }
   }
 
   Future<void> _guardRoute() async {
@@ -138,6 +177,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       onSelect: _selectSection,
       adminName: adminName,
       adminEmail: adminEmail,
+      unreadCount: _adminUnreadCount,
     );
 
     return LayoutBuilder(
@@ -198,6 +238,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return AdminReviewQueueScreen(adminUid: _auth.currentUser?.uid ?? '');
       case 6:
         return AdminInboxScreen(adminUid: _auth.currentUser?.uid ?? '');
+      case 5:
+        return _UsersSection(usersStream: _usersListStream);
       case 7:
         return _SettingsSection(onNotice: _showNotice);
       default:
@@ -240,6 +282,7 @@ class _Sidebar extends StatelessWidget {
     required this.onSelect,
     required this.adminName,
     required this.adminEmail,
+    this.unreadCount = 0,
   });
 
   final List<_NavItem> sections;
@@ -247,6 +290,7 @@ class _Sidebar extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final String adminName;
   final String adminEmail;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -300,6 +344,7 @@ class _Sidebar extends StatelessWidget {
               _SidebarItem(
                 item: sections[i],
                 selected: selectedIndex == i,
+                unreadCount: i == 6 ? unreadCount : 0, // Messages index = 6
                 onTap: () => onSelect(i),
               ),
             ],
@@ -337,11 +382,13 @@ class _SidebarItem extends StatelessWidget {
     required this.item,
     required this.selected,
     required this.onTap,
+    this.unreadCount = 0,
   });
 
   final _NavItem item;
   final bool selected;
   final VoidCallback onTap;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -372,14 +419,36 @@ class _SidebarItem extends StatelessWidget {
               children: [
                 Icon(item.icon, size: 20, color: color),
                 const SizedBox(width: 12),
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: color,
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: color,
+                    ),
                   ),
                 ),
+                if (unreadCount > 0)
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2019,6 +2088,255 @@ class _PanelCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+// ── Users section ──────────────────────────────────────────────────────────
+
+class _UsersSection extends StatelessWidget {
+  const _UsersSection({required this.usersStream});
+
+  final Stream<List<Map<String, dynamic>>>? usersStream;
+
+  @override
+  Widget build(BuildContext context) {
+    if (usersStream == null) {
+      return const _SectionPlaceholder(
+        icon: Icons.people_alt_rounded,
+        title: 'Users',
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Registered Users',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.people_alt_rounded, size: 15, color: AppColors.textSecondary),
+                        SizedBox(width: 6),
+                        Text(
+                          'All users',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: usersStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(40),
+                        child: CircularProgressIndicator(color: AppColors.primary),
+                      ),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return _EmptyPanel(
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Could not load users',
+                      message: snapshot.error.toString(),
+                    );
+                  }
+
+                  final users = snapshot.data ?? const [];
+
+                  if (users.isEmpty) {
+                    return const _EmptyPanel(
+                      icon: Icons.people_outline_rounded,
+                      title: 'No users yet',
+                      message: 'Registered users will appear here.',
+                    );
+                  }
+
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.cardBorder),
+                      boxShadow: AppColors.softShadow,
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: const BoxDecoration(
+                            border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 44),
+                              const Expanded(
+                                flex: 3,
+                                child: Text(
+                                  'User',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textTertiary,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 4,
+                                child: Text(
+                                  'Email',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textTertiary,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 60),
+                            ],
+                          ),
+                        ),
+                        for (var i = 0; i < users.length; i++) ...[
+                          _UserRow(user: users[i]),
+                          if (i != users.length - 1)
+                            const Divider(height: 1, indent: 72, color: AppColors.border),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _UserRow extends StatelessWidget {
+  const _UserRow({required this.user});
+
+  final Map<String, dynamic> user;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayName = (user['displayName'] as String?)?.trim();
+    final email = (user['email'] as String?)?.trim() ?? '';
+    final isAdmin = user['isAdmin'] as bool? ?? false;
+    final name = (displayName != null && displayName.isNotEmpty)
+        ? displayName
+        : email.isNotEmpty
+            ? email.split('@').first
+            : 'User';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: isAdmin ? AppColors.primarySurface : AppColors.surfaceVariant,
+            child: Text(
+              name[0].toUpperCase(),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: isAdmin ? AppColors.primary : AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (isAdmin) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primarySurface,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Admin',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Text(
+              email,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 60),
         ],
       ),
     );

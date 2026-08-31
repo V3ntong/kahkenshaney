@@ -12,7 +12,7 @@ import '../../widgets/app_button.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/otp_input.dart';
 import '../../data/firestore/database_service.dart';
-import '../dashboard.dart';
+import '../signup_profile_photo_screen.dart';
 import 'reset_password_screen.dart';
 
 enum OtpPurpose {
@@ -101,7 +101,8 @@ class _OtpScreenState extends State<OtpScreen> {
                 email: widget.email,
                 displayName: widget.fullName ?? '',
               );
-            } catch (_) {
+            } catch (e) {
+              debugPrint('[OtpScreen] createUserProfile error: $e');
               // Profile creation is best-effort — account is already active.
             }
           }
@@ -109,7 +110,7 @@ class _OtpScreenState extends State<OtpScreen> {
           Navigator.pushAndRemoveUntil(
             context,
             FadeThroughRoute(
-              builder: (_) => DashboardScreen(authService: widget.authService),
+              builder: (_) => const SignupProfilePhotoScreen(),
             ),
             (route) => false,
           );

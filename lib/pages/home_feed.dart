@@ -1,25 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/firestore/item_repository.dart';
+import '../data/firestore/notification_service.dart';
 import '../models/lost_found_item.dart';
+import '../screens/item_detail_screen.dart';
+import '../screens/user_reports_screen.dart';
 import '../theme/app_theme.dart';
-import '../widgets/ai_suggestion_card.dart';
 import '../widgets/feature_card.dart';
 import '../widgets/greeting_header.dart';
-import '../widgets/home_card.dart';
+import '../widgets/item_grid_card.dart';
 import '../widgets/search_bar.dart';
-import '../widgets/summary_card.dart';
 
-/// The premium Home tab dashboard: greeting header, search, featured summary
-/// card, quick-feature grid, status tracking, recent reports and AI
-/// suggestions.
-///
-/// Held in a keep-alive wrapper by the navigation shell so its scroll
-/// position and search input survive tab switches.
+/// Home tab dashboard with real Firestore data.
 class HomeFeed extends StatefulWidget {
   const HomeFeed({
     super.key,
     this.userName,
+    this.photoUrl,
     this.ownerUid,
     this.onAiScan,
     this.onTabSelected,
@@ -31,6 +31,7 @@ class HomeFeed extends StatefulWidget {
   });
 
   final String? userName;
+  final String? photoUrl;
   final String? ownerUid;
   final VoidCallback? onAiScan;
   final ValueChanged<int>? onTabSelected;
@@ -45,6 +46,31 @@ class HomeFeed extends StatefulWidget {
 }
 
 class _HomeFeedState extends State<HomeFeed> {
+  StreamSubscription<int>? _notifSub;
+  int _notificationCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenNotifications();
+  }
+
+  void _listenNotifications() {
+    final uid = widget.ownerUid;
+    if (uid == null || uid.isEmpty) return;
+    _notifSub = NotificationService()
+        .streamUnreadCount(uid)
+        .listen((count) {
+      if (mounted) setState(() => _notificationCount = count);
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _notifSub?.cancel();
+    super.dispose();
+  }
+
   void _comingSoon(String feature) {
     widget.onComingSoon?.call(feature);
   }
@@ -84,6 +110,22 @@ class _HomeFeedState extends State<HomeFeed> {
               onTap: () {
                 Navigator.pop(context);
                 widget.onChangePassword?.call();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+              title: const Text('My Reports'),
+              subtitle: const Text('Track your submitted reports'),
+              onTap: () {
+                Navigator.pop(context);
+                if (widget.ownerUid != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserReportsScreen(ownerUid: widget.ownerUid!),
+                    ),
+                  );
+                }
               },
             ),
             const Divider(height: 1, color: AppColors.border),
@@ -137,14 +179,16 @@ class _HomeFeedState extends State<HomeFeed> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 720),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     GreetingHeader(
                       userName: widget.userName,
+                      photoUrl: widget.photoUrl,
                       onNotifications: widget.onNotifications ??
                           () => _comingSoon('Notifications'),
                       onAvatarTap: _openAccountMenu,
-                      notificationCount: 2,
+                      notificationCount: _notificationCount,
                     ),
                     const SizedBox(height: 20),
                     HomeSearchBar(
@@ -152,15 +196,14 @@ class _HomeFeedState extends State<HomeFeed> {
                       onFilter: () => _comingSoon('Filters'),
                     ),
                     const SizedBox(height: 20),
-                    DashboardSummaryCard(
-                      label: 'This Month',
-                      value: 12,
-                      valueUnit: 'items',
-                      subtitle:
-                          'AI matching reunited you with 3 items this week.',
+                    _PrimaryActions(
                       onReportLost: _openChooseAction,
                       onReportFound: _openChooseAction,
+                      onAiScan: widget.onAiScan ?? () => _comingSoon('AI Scan'),
                     ),
+                    const SizedBox(height: 24),
+                    if (widget.ownerUid != null && widget.ownerUid!.isNotEmpty)
+                      _MyReportsStats(ownerUid: widget.ownerUid!),
                     const SizedBox(height: 24),
                     _SectionHeader(
                       title: 'Explore',
@@ -169,17 +212,17 @@ class _HomeFeedState extends State<HomeFeed> {
                     const SizedBox(height: 12),
                     _buildFeatureGrid(),
                     const SizedBox(height: 24),
-                    _UserReportsSection(
-                      ownerUid: widget.ownerUid,
-                      onViewAll: () => _goToTab(2),
+                    _RecentlyReportedSection(
+                      onViewAll: () => _goToTab(1),
+                      onItemTap: (item) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ItemDetailScreen(item: item),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 24),
-                    _SectionHeader(
-                      title: 'AI Suggestions',
-                      onViewAll: () => _comingSoon('All suggestions'),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAiSuggestions(context),
                   ],
                 ),
               ),
@@ -202,14 +245,6 @@ class _HomeFeedState extends State<HomeFeed> {
           onTap: () => _goToTab(2),
         ),
         FeatureItem(
-          title: 'AI Scan',
-          description: 'Match items with smart vision',
-          icon: Icons.auto_awesome_rounded,
-          tint: const Color(0xFFF0FDF4),
-          iconColor: AppColors.accent,
-          onTap: widget.onAiScan ?? () => _comingSoon('AI Scan'),
-        ),
-        FeatureItem(
           title: 'Messages',
           description: 'Chat with finders in real time',
           icon: Icons.chat_bubble_rounded,
@@ -225,120 +260,204 @@ class _HomeFeedState extends State<HomeFeed> {
           iconColor: AppColors.success,
           onTap: () => _goToTab(3),
         ),
-      ],
-    );
-  }
-
-  Widget _buildAiSuggestions(BuildContext context) {
-    return Column(
-      children: const [
-        AISuggestionCard(
-          suggestion: AISuggestion(
-            text: 'Your "Black Tumbler" matches a found item in the Library.',
-            confidence: 92,
-          ),
-        ),
-        SizedBox(height: 12),
-        AISuggestionCard(
-          suggestion: AISuggestion(
-            text: 'A nearby lost item matches the umbrella you reported.',
-            confidence: 78,
-          ),
+        FeatureItem(
+          title: 'My Reports',
+          description: 'View and manage your reports',
+          icon: Icons.person_rounded,
+          tint: AppColors.primarySurface,
+          iconColor: AppColors.primary,
+          onTap: () {
+            if (widget.ownerUid != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => UserReportsScreen(ownerUid: widget.ownerUid!),
+                ),
+              );
+            }
+          },
         ),
       ],
     );
   }
 }
 
-class _UserReportsSection extends StatefulWidget {
-  const _UserReportsSection({
-    required this.ownerUid,
-    required this.onViewAll,
+// ─── Primary Actions Row ──────────────────────────────────────────────────
+
+class _PrimaryActions extends StatelessWidget {
+  const _PrimaryActions({
+    required this.onReportLost,
+    required this.onReportFound,
+    required this.onAiScan,
   });
 
-  final String? ownerUid;
-  final VoidCallback onViewAll;
-
-  @override
-  State<_UserReportsSection> createState() => _UserReportsSectionState();
-}
-
-class _UserReportsSectionState extends State<_UserReportsSection> {
-  ItemRepository? _repository;
-  Stream<List<LostFoundItem>>? _stream;
-  LostFoundItem? _selected;
-
-  @override
-  void initState() {
-    super.initState();
-    _stream = _buildStream();
-  }
-
-  Stream<List<LostFoundItem>>? _buildStream() {
-    final ownerUid = widget.ownerUid;
-    if (ownerUid == null || ownerUid.isEmpty) return null;
-    _repository ??= ItemRepository();
-    return _repository!.streamUserItems(ownerUid);
-  }
-
-  void _retry() {
-    setState(() => _stream = _buildStream());
-  }
+  final VoidCallback onReportLost;
+  final VoidCallback onReportFound;
+  final VoidCallback onAiScan;
 
   @override
   Widget build(BuildContext context) {
-    final stream = _stream;
-    if (stream == null) {
-      return _ReportsEmptyState(onViewAll: widget.onViewAll);
-    }
+    return Row(
+      children: [
+        Expanded(
+          child: _ActionPill(
+            label: 'Report Lost',
+            icon: Icons.fmd_bad_rounded,
+            color: AppColors.error,
+            surface: AppColors.errorSurface,
+            onTap: onReportLost,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ActionPill(
+            label: 'Report Found',
+            icon: Icons.check_circle_outline_rounded,
+            color: AppColors.success,
+            surface: AppColors.successSurface,
+            onTap: onReportFound,
+          ),
+        ),
+        const SizedBox(width: 10),
+        _ActionPill(
+          label: 'AI Scan',
+          icon: Icons.auto_awesome_rounded,
+          color: AppColors.primary,
+          surface: AppColors.primarySurface,
+          onTap: onAiScan,
+          compact: true,
+        ),
+      ],
+    );
+  }
+}
 
+class _ActionPill extends StatelessWidget {
+  const _ActionPill({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.surface,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color surface;
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 14 : 16,
+          vertical: compact ? 12 : 14,
+        ),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.15)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            Icon(icon, size: 18, color: color),
+            if (!compact) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── My Reports Stats ─────────────────────────────────────────────────────
+
+class _MyReportsStats extends StatelessWidget {
+  const _MyReportsStats({required this.ownerUid});
+
+  final String ownerUid;
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<List<LostFoundItem>>(
-      stream: stream,
+      stream: ItemRepository().streamUserItems(ownerUid),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _ReportsLoadingState();
-        }
-        if (snapshot.hasError) {
-          return _ReportsErrorState(onRetry: _retry);
-        }
         final items = snapshot.data ?? const <LostFoundItem>[];
-        if (items.isEmpty) {
-          return _ReportsEmptyState(onViewAll: widget.onViewAll);
-        }
+        final total = items.length;
+        final lost = items.where((i) => i.kind == ItemKind.lost).length;
+        final found = items.where((i) => i.kind == ItemKind.found).length;
+        final resolved = items
+            .where((i) => i.status == ItemStatus.claimed || i.status == ItemStatus.closed)
+            .length;
 
-        final selected = (_selected != null &&
-                items.any((item) => item.id == _selected!.id))
-            ? _selected!
-            : items.first;
-
-        final visible = items.length > 5 ? items.take(5).toList() : items;
+        if (total == 0) return const SizedBox.shrink();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _SectionHeader(title: 'Status Tracking'),
+            const _SectionHeader(title: 'My Reports'),
             const SizedBox(height: 12),
-            _StatusTrackerCard(status: selected.status),
-            const SizedBox(height: 24),
-            const _SectionHeader(title: 'Recent Reports'),
-            const SizedBox(height: 12),
-            HomeCard(
-              padding: EdgeInsets.zero,
-              radius: 20,
-              child: Column(
-                children: [
-                  for (var i = 0; i < visible.length; i++) ...[
-                    _ReportRow(
-                      item: visible[i],
-                      selected: visible[i].id == selected.id,
-                      onTap: () => setState(() => _selected = visible[i]),
-                    ),
-                    if (i != visible.length - 1)
-                      const Divider(height: 1, color: AppColors.border),
-                  ],
-                  _ViewAllReportsButton(onPressed: widget.onViewAll),
-                ],
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatTile(
+                    label: 'Total',
+                    value: '$total',
+                    icon: Icons.receipt_long_rounded,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    label: 'Lost',
+                    value: '$lost',
+                    icon: Icons.fmd_bad_rounded,
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    label: 'Found',
+                    value: '$found',
+                    icon: Icons.inventory_2_rounded,
+                    color: AppColors.success,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    label: 'Resolved',
+                    value: '$resolved',
+                    icon: Icons.check_circle_rounded,
+                    color: AppColors.info,
+                  ),
+                ),
+              ],
             ),
           ],
         );
@@ -347,391 +466,48 @@ class _UserReportsSectionState extends State<_UserReportsSection> {
   }
 }
 
-class _StatusTrackerCard extends StatelessWidget {
-  const _StatusTrackerCard({required this.status});
-
-  final ItemStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final index = status.index;
-    return HomeCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.timeline_rounded,
-                  size: 18, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Report Progress',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                ),
-              ),
-              Text(
-                status.shortLabel,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < ItemStatus.values.length; i++) ...[
-                  _StageNode(
-                    stage: ItemStatus.values[i],
-                    state: i < index
-                        ? _StageState.done
-                        : (i == index
-                            ? _StageState.current
-                            : _StageState.upcoming),
-                  ),
-                  if (i < ItemStatus.values.length - 1)
-                    _StageConnector(done: i < index),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _StageState { done, current, upcoming }
-
-class _StageNode extends StatelessWidget {
-  const _StageNode({required this.stage, required this.state});
-
-  final ItemStatus stage;
-  final _StageState state;
-
-  static const Map<ItemStatus, IconData> _icons = {
-    ItemStatus.open: Icons.send_rounded,
-    ItemStatus.pendingVerification: Icons.hourglass_top_rounded,
-    ItemStatus.verified: Icons.verified_rounded,
-    ItemStatus.matched: Icons.handshake_rounded,
-    ItemStatus.claimed: Icons.check_circle_rounded,
-    ItemStatus.closed: Icons.archive_rounded,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final upcoming = state == _StageState.upcoming;
-    final icon = _icons[stage]!;
-
-    return SizedBox(
-      width: 92,
-      child: Column(
-        children: [
-          if (state == _StageState.current)
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.primaryGradient,
-                border: Border.all(color: Colors.white, width: 2.5),
-                boxShadow: AppColors.softShadow,
-              ),
-              child: Icon(icon, size: 19, color: Colors.white),
-            )
-          else
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: upcoming ? AppColors.surfaceVariant : AppColors.primary,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                state == _StageState.done ? Icons.check_rounded : icon,
-                size: 18,
-                color: upcoming ? AppColors.textTertiary : Colors.white,
-              ),
-            ),
-          const SizedBox(height: 8),
-          Text(
-            stage.label,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.25,
-              fontWeight:
-                  state == _StageState.current ? FontWeight.w700 : FontWeight.w500,
-              color: upcoming ? AppColors.textTertiary : AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StageConnector extends StatelessWidget {
-  const _StageConnector({required this.done});
-
-  final bool done;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 14,
-      height: 3,
-      margin: const EdgeInsets.only(top: 17),
-      decoration: BoxDecoration(
-        color: done ? AppColors.primary : AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(2),
-      ),
-    );
-  }
-}
-
-class _ReportRow extends StatelessWidget {
-  const _ReportRow({
-    required this.item,
-    required this.selected,
-    required this.onTap,
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
   });
 
-  final LostFoundItem item;
-  final bool selected;
-  final VoidCallback onTap;
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final lost = item.kind == ItemKind.lost;
-    final accent = lost ? AppColors.error : AppColors.success;
-    final surface = lost ? AppColors.errorSurface : AppColors.successSurface;
-
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        color: selected ? surface.withValues(alpha: 0.45) : null,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: surface,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                lost ? Icons.fmd_bad_rounded : Icons.inventory_2_rounded,
-                size: 18,
-                color: accent,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${lost ? 'Lost' : 'Found'} • '
-                    '${_formatRelativeDate(item.createdAt)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textTertiary,
-                      fontSize: 11.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            _CompactStatus(status: item.status),
-            const SizedBox(width: 8),
-            Icon(
-              selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
-              size: 17,
-              color: selected ? AppColors.primary : AppColors.textTertiary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactStatus extends StatelessWidget {
-  const _CompactStatus({required this.status});
-
-  final ItemStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color, bg) = _statusColors(status);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 9.5,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-(String, Color, Color) _statusColors(ItemStatus status) => switch (status) {
-      ItemStatus.open => (
-          ItemStatus.open.shortLabel,
-          AppColors.info,
-          AppColors.infoSurface
-        ),
-      ItemStatus.pendingVerification => (
-          ItemStatus.pendingVerification.shortLabel,
-          AppColors.warning,
-          AppColors.warningSurface
-        ),
-      ItemStatus.verified => (
-          ItemStatus.verified.shortLabel,
-          AppColors.success,
-          AppColors.successSurface
-        ),
-      ItemStatus.matched => (
-          ItemStatus.matched.shortLabel,
-          AppColors.primary,
-          AppColors.primarySurface
-        ),
-      ItemStatus.claimed => (
-          ItemStatus.claimed.shortLabel,
-          AppColors.info,
-          AppColors.infoSurface
-        ),
-      ItemStatus.closed => (
-          ItemStatus.closed.shortLabel,
-          AppColors.textSecondary,
-          AppColors.surfaceVariant
-        ),
-    };
-
-class _ViewAllReportsButton extends StatelessWidget {
-  const _ViewAllReportsButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: TextButton(
-        onPressed: onPressed,
-        style: TextButton.styleFrom(
-          foregroundColor: AppColors.primary,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: const RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.vertical(bottom: Radius.circular(20)),
-          ),
-          textStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        child: const Text('View All Reports'),
-      ),
-    );
-  }
-}
-
-class _ReportsLoadingState extends StatelessWidget {
-  const _ReportsLoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const HomeCard(
-      child: Row(
-        children: [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.2,
-              color: AppColors.primary,
-            ),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Loading your reports…',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13.5),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReportsErrorState extends StatelessWidget {
-  const _ReportsErrorState({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return HomeCard(
       child: Column(
         children: [
-          const Icon(Icons.cloud_off_rounded,
-              size: 38, color: AppColors.textTertiary),
-          const SizedBox(height: 10),
-          const Text(
-            'Couldn\'t load your reports.',
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 6),
+          Text(
+            value,
             style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: color,
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Check your connection and try again.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Retry'),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color.withValues(alpha: 0.7),
+            ),
           ),
         ],
       ),
@@ -739,60 +515,69 @@ class _ReportsErrorState extends StatelessWidget {
   }
 }
 
-class _ReportsEmptyState extends StatelessWidget {
-  const _ReportsEmptyState({required this.onViewAll});
+// ─── Recently Reported ────────────────────────────────────────────────────
+
+class _RecentlyReportedSection extends StatelessWidget {
+  const _RecentlyReportedSection({
+    required this.onViewAll,
+    required this.onItemTap,
+  });
 
   final VoidCallback onViewAll;
+  final ValueChanged<LostFoundItem> onItemTap;
 
   @override
   Widget build(BuildContext context) {
-    return HomeCard(
-      child: Column(
-        children: [
-          const Icon(Icons.inbox_outlined,
-              size: 38, color: AppColors.textTertiary),
-          const SizedBox(height: 10),
-          const Text(
-            'No reports yet',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Lost something or found an item? Report it to start tracking '
-            'its status here.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12.5,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: onViewAll,
-            icon: const Icon(Icons.receipt_long_rounded, size: 18),
-            label: const Text('View All Reports'),
-          ),
-        ],
-      ),
+    return StreamBuilder<List<LostFoundItem>>(
+      stream: ItemRepository().streamItems(kind: ItemKind.lost, limit: 5),
+      builder: (context, lostSnap) {
+        return StreamBuilder<List<LostFoundItem>>(
+          stream: ItemRepository().streamItems(kind: ItemKind.found, limit: 5),
+          builder: (context, foundSnap) {
+            final lostItems = lostSnap.data ?? const <LostFoundItem>[];
+            final foundItems = foundSnap.data ?? const <LostFoundItem>[];
+            final all = [...lostItems, ...foundItems]
+              ..sort((a, b) => (b.createdAt ?? DateTime(0))
+                  .compareTo(a.createdAt ?? DateTime(0)));
+            final recent = all.take(4).toList();
+
+            if (recent.isEmpty) return const SizedBox.shrink();
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SectionHeader(
+                  title: 'Recently Reported',
+                  onViewAll: onViewAll,
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 200,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: recent.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      return SizedBox(
+                        width: 150,
+                        child: ItemGridCard(
+                          item: recent[index],
+                          onTap: () => onItemTap(recent[index]),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
 
-String _formatRelativeDate(DateTime? date) {
-  if (date == null) return '—';
-  final diff = DateTime.now().difference(date);
-  if (diff.inMinutes < 1) return 'Just now';
-  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-  if (diff.inDays < 1) return '${diff.inHours}h ago';
-  if (diff.inDays < 7) return '${diff.inDays}d ago';
-  return '${date.year}-${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
-}
+// ─── Shared Widgets ───────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, this.onViewAll});

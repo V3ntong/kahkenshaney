@@ -4,7 +4,7 @@ import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
 import '../widgets/item_grid_card.dart';
-import 'item_detail_screen.dart';
+import '../screens/item_detail_screen.dart';
 
 /// A single page with tabs for browsing Lost and Found items.
 ///

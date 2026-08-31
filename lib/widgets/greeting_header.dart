@@ -1,29 +1,25 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// Premium dashboard header: time-based greeting and large page title on the
-/// left; notification icon and circular profile avatar on the right.
+/// Premium dashboard header: large page title on the left;
+/// notification icon and circular profile avatar on the right.
 class GreetingHeader extends StatelessWidget {
   const GreetingHeader({
     super.key,
     this.userName,
+    this.photoUrl,
     this.onNotifications,
     this.onAvatarTap,
     this.notificationCount = 0,
   });
 
   final String? userName;
+  final String? photoUrl;
   final VoidCallback? onNotifications;
   final VoidCallback? onAvatarTap;
   final int notificationCount;
-
-  String get _greeting {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  }
 
   String get _firstName {
     final name = userName?.trim() ?? '';
@@ -43,34 +39,20 @@ class GreetingHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$_greeting,',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+          child: Semantics(
+            header: true,
+            child: Text(
+              _firstName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                height: 1.1,
               ),
-              const SizedBox(height: 2),
-              Semantics(
-                header: true,
-                child: Text(
-                  _firstName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    height: 1.1,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
         _NotificationButton(
@@ -78,7 +60,11 @@ class GreetingHeader extends StatelessWidget {
           onTap: onNotifications,
         ),
         const SizedBox(width: 12),
-        _ProfileAvatar(initial: _initial, onTap: onAvatarTap),
+        _ProfileAvatar(
+          initial: _initial,
+          photoUrl: photoUrl,
+          onTap: onAvatarTap,
+        ),
       ],
     );
   }
@@ -154,9 +140,14 @@ class _NotificationButton extends StatelessWidget {
 }
 
 class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.initial, this.onTap});
+  const _ProfileAvatar({
+    required this.initial,
+    this.photoUrl,
+    this.onTap,
+  });
 
   final String initial;
+  final String? photoUrl;
   final VoidCallback? onTap;
 
   @override
@@ -167,19 +158,64 @@ class _ProfileAvatar extends StatelessWidget {
         width: 46,
         height: 46,
         decoration: BoxDecoration(
-          gradient: AppColors.heroGradient,
           shape: BoxShape.circle,
+          gradient: photoUrl == null ? AppColors.heroGradient : null,
           border: Border.all(color: Colors.white, width: 2),
           boxShadow: AppColors.softShadow,
         ),
-        alignment: Alignment.center,
-        child: Text(
-          initial,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
+        child: ClipOval(
+          child: photoUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: photoUrl!,
+                  fit: BoxFit.cover,
+                  width: 46,
+                  height: 46,
+                  placeholder: (_, _) => Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(
+                      gradient: AppColors.heroGradient,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, _, _) => Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(
+                      gradient: AppColors.heroGradient,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                )
+              : Align(
+                  alignment: Alignment.center,
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
         ),
       ),
     );

@@ -123,6 +123,7 @@ class LostFoundItem {
     required this.title,
     required this.description,
     required this.ownerUid,
+    this.category,
     this.location,
     this.storageLocation,
     this.status = ItemStatus.open,
@@ -141,6 +142,7 @@ class LostFoundItem {
   final String title;
   final String description;
   final String ownerUid;
+  final String? category;
   final String? location;
   final String? storageLocation;
   final ItemStatus status;
@@ -162,6 +164,7 @@ class LostFoundItem {
   LostFoundItem copyWith({
     String? title,
     String? description,
+    String? category,
     String? location,
     String? storageLocation,
     ItemStatus? status,
@@ -178,6 +181,7 @@ class LostFoundItem {
       title: title ?? this.title,
       description: description ?? this.description,
       ownerUid: ownerUid,
+      category: category ?? this.category,
       location: location ?? this.location,
       storageLocation: storageLocation ?? this.storageLocation,
       status: status ?? this.status,
@@ -199,6 +203,7 @@ class LostFoundItem {
       title: (map['title'] as String?) ?? '',
       description: (map['description'] as String?) ?? '',
       ownerUid: (map['ownerUid'] as String?) ?? '',
+      category: map['category'] as String?,
       location: map['location'] as String?,
       storageLocation: map['storageLocation'] as String?,
       status: ItemStatusX.fromFirestore(map['status'] as String?),
@@ -224,6 +229,7 @@ class LostFoundItem {
       'title': title,
       'description': description,
       'ownerUid': ownerUid,
+      'category': category,
       'location': location,
       'storageLocation': storageLocation,
       'status': status.firestoreValue,

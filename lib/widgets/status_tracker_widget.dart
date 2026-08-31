@@ -62,7 +62,6 @@ class StatusTrackerWidget extends StatelessWidget {
           final status = _pipeline[index];
           final isDone = index < currentIndex;
           final isCurrent = index == currentIndex;
-          final isFuture = index > currentIndex;
 
           return Expanded(
             child: Column(
@@ -101,6 +100,8 @@ class StatusTrackerWidget extends StatelessWidget {
                 Text(
                   status.shortLabel,
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight:
