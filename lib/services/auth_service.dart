@@ -41,10 +41,34 @@ Future<String?> lookupAdminUid() async {
 }
 
 /// Whether [email] matches the designated admin email (case-insensitive).
+/// Also checks the adminEmails Firestore collection for dynamically added admins.
+Future<bool> isAdminEmailAsync(String? email) async {
+  if (email == null) return false;
+  final trimmed = email.trim().toLowerCase();
+  if (trimmed == kAdminEmail.trim().toLowerCase()) return true;
+
+  try {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('adminEmails')
+        .where('email', isEqualTo: trimmed)
+        .limit(1)
+        .get();
+    return snapshot.docs.isNotEmpty;
+  } catch (e) {
+    debugPrint('[AuthService] isAdminEmailAsync error: $e');
+    return false;
+  }
+}
+
+/// Whether [email] matches the designated admin email (case-insensitive).
+/// This is the synchronous version; for full admin list check use isAdminEmailAsync.
 bool isAdminEmail(String? email) {
   if (email == null) return false;
   return email.trim().toLowerCase() == kAdminEmail.trim().toLowerCase();
 }
+
+/// Cached result of async admin check.
+bool _asyncAdminCheckResult = false;
 
 /// Outcome of a login / registration attempt.
 sealed class AuthResult {
@@ -79,7 +103,13 @@ abstract class AuthService {
   bool get isAuthenticated => currentUser != null;
 
   /// Whether the currently signed-in user is the designated admin email.
-  bool get isAdminAuthenticated => isAdminEmail(currentUser?.email);
+  /// Checks both the hardcoded admin email and the adminEmails Firestore collection.
+  bool get isAdminAuthenticated => isAdminEmail(currentUser?.email) || _asyncAdminCheckResult;
+
+  /// Checks and caches the admin status from Firestore for the current user.
+  Future<void> refreshAdminStatus() async {
+    _asyncAdminCheckResult = await isAdminEmailAsync(currentUser?.email);
+  }
 
   /// Signs the current user out (no-op when no one is signed in).
   Future<void> signOut();
@@ -159,7 +189,12 @@ class FirebaseAuthService implements AuthService {
   bool get isAuthenticated => currentUser != null;
 
   @override
-  bool get isAdminAuthenticated => isAdminEmail(currentUser?.email);
+  bool get isAdminAuthenticated => isAdminEmail(currentUser?.email) || _asyncAdminCheckResult;
+
+  @override
+  Future<void> refreshAdminStatus() async {
+    _asyncAdminCheckResult = await isAdminEmailAsync(currentUser?.email);
+  }
 
   @override
   Future<void> signOut() async {

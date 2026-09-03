@@ -1,11 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_theme.dart';
+import 'text_animations.dart';
 
 /// Premium dashboard header: large page title on the left;
 /// notification icon and circular profile avatar on the right.
-class GreetingHeader extends StatelessWidget {
+class GreetingHeader extends StatefulWidget {
   const GreetingHeader({
     super.key,
     this.userName,
@@ -13,6 +15,7 @@ class GreetingHeader extends StatelessWidget {
     this.onNotifications,
     this.onAvatarTap,
     this.notificationCount = 0,
+    this.animateReveal = false,
   });
 
   final String? userName;
@@ -21,17 +24,32 @@ class GreetingHeader extends StatelessWidget {
   final VoidCallback? onAvatarTap;
   final int notificationCount;
 
+  /// When true, the username is displayed with the blur-to-focus animation.
+  final bool animateReveal;
+
+  @override
+  State<GreetingHeader> createState() => _GreetingHeaderState();
+}
+
+class _GreetingHeaderState extends State<GreetingHeader> {
   String get _firstName {
-    final name = userName?.trim() ?? '';
+    final name = widget.userName?.trim() ?? '';
     if (name.isEmpty) return 'there';
     return name.split(' ').first;
   }
 
   String get _initial {
-    final name = userName?.trim() ?? '';
+    final name = widget.userName?.trim() ?? '';
     if (name.isEmpty) return 'K';
     return name.characters.first.toUpperCase();
   }
+
+  static final _headingStyle = GoogleFonts.bebasNeue(
+    fontSize: 28,
+    color: AppColors.textPrimary,
+    letterSpacing: 1.0,
+    height: 1.1,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -41,29 +59,32 @@ class GreetingHeader extends StatelessWidget {
         Expanded(
           child: Semantics(
             header: true,
-            child: Text(
-              _firstName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-                height: 1.1,
-              ),
-            ),
+            child: widget.animateReveal
+                ? BlurRevealText(
+                    text: _firstName.toUpperCase(),
+                    duration: const Duration(milliseconds: 1000),
+                    delay: const Duration(milliseconds: 300),
+                    maxBlur: 10,
+                    slideOffset: 16,
+                    style: _headingStyle,
+                  )
+                : Text(
+                    _firstName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _headingStyle,
+                  ),
           ),
         ),
         _NotificationButton(
-          count: notificationCount,
-          onTap: onNotifications,
+          count: widget.notificationCount,
+          onTap: widget.onNotifications,
         ),
         const SizedBox(width: 12),
         _ProfileAvatar(
           initial: _initial,
-          photoUrl: photoUrl,
-          onTap: onAvatarTap,
+          photoUrl: widget.photoUrl,
+          onTap: widget.onAvatarTap,
         ),
       ],
     );

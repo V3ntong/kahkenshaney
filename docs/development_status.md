@@ -1,8 +1,186 @@
 # Development Status — Lost & Found App
 
-**Last updated:** 2026-08-24 (latest session)
-**Previous sessions:** 2026-08-22, 2026-08-23
-**Overall:** OTP, Lost & Found, admin moderation, 1-on-1 chat, notifications, skeleton chatbot animation, FCM push trigger, and storage rules are implemented. Firestore indexes deployed. App builds and runs.
+**Last updated:** 2026-09-04 (latest session)
+**Previous sessions:** 2026-08-22, 2026-08-23, 2026-08-24, 2026-08-25
+**Overall:** OTP, Lost & Found, admin moderation, 1-on-1 chat, notifications, chatbot, FCM push, storage rules, admin dashboard, animations, search, mark-as-resolved all implemented. Firestore indexes deployed. App builds and runs.
+
+---
+
+## Session 2026-09-04 — What Was Done
+
+### 1. Admin Sidebar Auto-Close — `FIXED` ✅
+
+**File:** `lib/screens/admin_dashboard.dart`
+
+- Replaced broken `Scaffold.of(context).isDrawerOpen` + `Navigator.pop()` with `Navigator.of(context).maybePop()`
+- `maybePop` safely closes the drawer on narrow screens and does nothing on wide screens (inline sidebar)
+
+### 2. Review Queue — Instant Removal on Approve/Reject — `IMPLEMENTED` ✅
+
+**File:** `lib/screens/admin_review_queue_screen.dart`
+
+- Added `List<LostFoundItem>? _localItems` field for local state tracking
+- `_updateModeration()` now calls `setState(() { _localItems..removeWhere(...) })` **before** the Firestore write — item vanishes instantly
+- `_updateItemStatus()` also removes instantly when status becomes `resolved`
+- Stream syncs in background for external changes
+
+### 3. Rejection Reason Dialog — `IMPLEMENTED` ✅
+
+**File:** `lib/screens/admin_review_queue_screen.dart`
+
+- `_showRejectDialog()` — prompts admin for rejection reason via `AlertDialog` with `TextField`
+- Saves `rejectionReason` to Firestore item document
+- Sends notification to reporter with rejection reason
+
+### 4. New Admin Section: "Resolved" — `IMPLEMENTED` ✅
+
+**Files:**
+- `lib/screens/admin_resolved_screen.dart` (NEW)
+- `lib/screens/admin_dashboard.dart`
+- `lib/data/firestore/item_repository.dart`
+
+**What it does:**
+- New sidebar item "Resolved" (index 2) with `Icons.verified_rounded`
+- Shows all approved items with non-terminal status (open, pendingVerification, verified, matched)
+- Each card displays current status chip + "Mark Resolved" button
+- Tapping "Mark Resolved" instantly removes card from local state + updates Firestore
+- `_buildSectionBody` switch updated: Dashboard(0), Review Queue(1), Resolved(2), Reports(3), Users(4), Messages(5), Profile(6), Settings(7)
+
+**New repository method:** `streamNonTerminalItems()` — streams approved items where `!status.isTerminal`
+
+### 5. "Mark as Resolved" on Review Queue Cards — `REMOVED` ✅
+
+**File:** `lib/screens/admin_review_queue_screen.dart`
+
+- Removed "Resolve" button from review queue cards (now lives in the dedicated "Resolved" section)
+- Approve/Reject remain as the only card actions in review queue
+
+### 6. ItemStatus.resolved — `ADDED` ✅
+
+**File:** `lib/models/lost_found_item.dart`
+
+- Added `ItemStatus.resolved` to enum (label "Resolved", `isTerminal: true`)
+- Status progression: open → pendingVerification → verified → matched → claimed → **resolved** → closed
+
+**Updated all switch statements:**
+- `lib/data/firestore/notification_service.dart` — "Item Resolved" notification
+- `lib/pages/item_list_page.dart` — green status badge
+- `lib/widgets/item_grid_card.dart` — green status badge
+- `lib/widgets/status_tracker_widget.dart` — green dot
+
+### 7. Typography & Text Animation Fixes — `IMPLEMENTED` ✅
+
+**File:** `lib/widgets/text_animations.dart`
+
+- **TypewriterText**: Added `textAlign` parameter; Stack alignment dynamically switches to `Alignment.center` when `textAlign == TextAlign.center`
+- **BlurRevealText**: Added `textAlign` parameter, passed through to `Text` widget
+- **AnimatedAuthHeader**: Both title (`BlurRevealText`) and subtitle (`TypewriterText`) now use `textAlign: TextAlign.center`
+- **Typewriter speed**: Reduced to 2ms/char (was 5ms)
+- **Typewriter delay**: Reduced from 600ms → 100ms in `AnimatedAuthHeader`
+
+**Other typewriter delays reduced:**
+- `lib/mainpage.dart` — landing page subtitle delay: 800ms → 300ms
+- `lib/screens/dashboard.dart` — post-login overlay delay: 600ms → 100ms
+
+### 8. Sign Up Text Fix — `FIXED` ✅
+
+**File:** `lib/screens/auth/signup.dart`
+
+- Changed "Powered by AI and Machine Learning to turn lost into found." → "Powered by AI and ML to turn lost into found."
+
+### 9. Layout Overflow Fix — Item Detail Badges — `FIXED` ✅
+
+**File:** `lib/screens/item_detail_screen.dart`
+
+- Changed badge `Row` → `Wrap` with `spacing: 8, runSpacing: 8` to prevent overflow on narrow screens
+
+### 10. Search Bar — Home Feed → BrowseItemsPage — `IMPLEMENTED` ✅
+
+**Files:**
+- `lib/pages/home_feed.dart` — search navigates to `BrowseItemsPage` with `initialSearchQuery`
+- `lib/pages/browse_items_page.dart` — accepts `initialSearchQuery` parameter
+
+### 11. Related Items — Score-Based Matching — `IMPLEMENTED` ✅
+
+**File:** `lib/screens/item_detail_screen.dart`
+
+- Replaced simple category-only match with `_relatedScore()` function
+- Scores by: category (+10), shared title keywords (+3 each), same location (+2)
+- Sorts by score descending
+
+### 12. Text Colors Darkened — `UPDATED` ✅
+
+**File:** `lib/theme/app_theme.dart`
+
+- `textSecondary`: `#6B7280` → `#374151` (dark charcoal)
+- `textTertiary`: `#9CA3AF` → `#6B7280`
+
+---
+
+## Session 2026-08-25 — What Was Done
+
+### 1. Chatbot UI Enhancement — `IMPLEMENTED` ✅
+
+**File:** `lib/widgets/chatbot.dart`
+
+- Typing indicator: gradient animated dots
+- Send button: animated scale + color change
+- Welcome screen with app logo and quick suggestion chips
+- Message bubbles with timestamps
+
+### 2. Chatbot Response Speed — `OPTIMIZED` ✅
+
+**File:** `lib/services/chat_service.dart`
+
+- Timeout: 60s → 30s
+- maxOutputTokens: 2048 → 1024
+- Temperature: 0.4 → 0.3
+- Shorter system prompt
+- History limited to last 10 messages
+
+### 3. Flutter Animation Overhaul — `IMPLEMENTED` ✅
+
+**File:** `lib/widgets/text_animations.dart` (NEW)
+
+- `TypewriterText` — character-by-character reveal with cursor
+- `BlurRevealText` — blur-to-focus cinematic entrance with slide-in
+- `AnimatedAuthHeader` — combines BlurRevealText title + TypewriterText subtitle
+
+**Dependencies added:** `flutter_animate: ^4.5.2`, `google_fonts: ^6.2.1`
+
+### 4. Auth Pages Animation — `IMPLEMENTED` ✅
+
+**Files:**
+- `lib/widgets/auth_scaffold.dart` — uses `AnimatedAuthHeader`
+- `lib/screens/auth/login.dart`, `signup.dart`, OTP screens, change password
+
+### 5. Post-Login Overlay Animation — `IMPLEMENTED` ✅
+
+**File:** `lib/screens/dashboard.dart`
+
+- "Welcome, [name]!" uses `BlurRevealText` with Bebas Neue
+- "Tap anywhere to continue" uses `TypewriterText` with Lobster Two
+- Removed logo from overlay
+
+### 6. Landing Page Animation — `IMPLEMENTED` ✅
+
+**File:** `lib/mainpage.dart`
+
+- Heading uses `BlurRevealText` with Bebas Neue
+- Subtitle uses `TypewriterText` with Lobster Two
+
+### 7. Home Greeting Animation — `IMPLEMENTED` ✅
+
+**Files:**
+- `lib/widgets/greeting_header.dart` — uses `BlurRevealText` when `animateReveal` is true
+- `lib/pages/home_page.dart` — passes `overlayDismissed` flag
+- `lib/pages/home_feed.dart` — passes `animateReveal` to `GreetingHeader`
+
+### 8. Login Navigation Fix — `FIXED` ✅
+
+**File:** `lib/screens/auth/signup.dart`
+
+- "Log In" link now uses `Navigator.pushReplacement` to `LoginScreen` instead of `Navigator.pop()`
 
 ---
 
@@ -66,6 +244,7 @@ class LostFoundItem {
 - `streamItems()` — filters `moderationStatus == 'approved'` (with error fallback)
 - `streamPendingItems()` — admin pending queue
 - `streamAllItemsForAdmin()` — admin sees everything
+- `streamNonTerminalItems()` — approved items with non-terminal status (NEW)
 - `streamItemsWithSearch()` — client-side search
 - `streamUserItems()` — user's own reports
 - `updateItemFields()` — partial updates
@@ -76,7 +255,9 @@ class LostFoundItem {
 **File:** `lib/screens/admin_review_queue_screen.dart`
 
 - Lists items with `moderationStatus == 'pending'`
-- Approve/Reject buttons per item
+- Approve/Reject buttons per card
+- Rejection reason dialog
+- Instant local removal on approve/reject
 - StatusTrackerWidget integration
 - Full status controls in bottom sheet
 
@@ -93,7 +274,7 @@ class LostFoundItem {
 **File:** `lib/widgets/status_tracker_widget.dart`
 
 - Horizontal stepper UI
-- Steps: Submitted → Pending Verification → Verified → Matched → Claimed → Archived
+- Steps: Submitted → Pending Verification → Verified → Matched → Claimed → Resolved → Archived
 - Compact mode available
 - Shows history of status changes with timestamps
 
@@ -131,7 +312,7 @@ class LostFoundItem {
 
 **Wired into:**
 - `lib/pages/messages_page.dart` — replaced placeholder with `UserChatScreen`
-- `lib/screens/admin_dashboard.dart` — sidebar has Messages (index 6) → `AdminInboxScreen`
+- `lib/screens/admin_dashboard.dart` — sidebar has Messages (index 5) → `AdminInboxScreen`
 
 ### 12. Cloud Functions (FCM + Migration) — `DEPLOYED` ✅
 
@@ -144,23 +325,37 @@ class LostFoundItem {
 
 **Key fix:** `package.json` changed `"main": "index.js"` → `"main": "lib/index.js"` to match tsconfig output directory. This was why new functions weren't being deployed.
 
-### 13. Chatbot Skeleton Animation — `IMPLEMENTED` ✅
+### 13. Chatbot — `IMPLEMENTED` ✅
 
 **File:** `lib/widgets/chatbot.dart`
 
-- Replaced 3-dot typing indicator with shimmer skeleton animation
-- Uses `ShaderMask` + `LinearGradient` with `AnimationController`
-- Two skeleton bubbles (left/right) that pulse while bot is "thinking"
+- Typing indicator with gradient animated dots
+- Send button with animated scale
+- Welcome screen with quick suggestion chips
+- Message bubbles with timestamps
+
+**File:** `lib/services/chat_service.dart`
+- Gemini API (`gemini-3.6-flash`)
+- Optimized: 30s timeout, 1024 tokens, temp 0.3, shorter prompt, 10-message history
 
 ### 14. Admin Dashboard — `UPDATED` ✅
 
 **File:** `lib/screens/admin_dashboard.dart`
 
-- Sidebar sections: Dashboard (0), Review Queue (1), Lost Items (2), Found Items (3), Reports (4), Users (5), Messages (6), Settings (7), Logout (8)
-- Settings section has "Run Moderation Migration" button
-- `_buildSectionBody()` handles cases 0, 1, 6, 7
+**Sidebar sections (current):**
+| Index | Section | Widget |
+|-------|---------|--------|
+| 0 | Dashboard | `_DashboardOverview` |
+| 1 | Review Queue | `AdminReviewQueueScreen` |
+| 2 | Resolved | `AdminResolvedScreen` |
+| 3 | Reports | `_SectionPlaceholder` |
+| 4 | Users | `_UsersSection` |
+| 5 | Messages | `AdminInboxScreen` |
+| 6 | Profile | `_AdminProfileSection` |
+| 7 | Settings | `_SettingsSection` |
+| 8 | Logout | (intercepted by `_selectSection`) |
 
-### 15. Bug Fixes This Session
+### 15. Bug Fixes — Session 2026-08-24
 
 | Issue | Fix |
 |-------|-----|
@@ -204,7 +399,7 @@ class LostFoundItem {
 
 ---
 
-## TODO — Next Session (2026-08-25)
+## TODO — Next Session (2026-09-05)
 
 ### Priority 1: Migration + Admin Setup (do first)
 
@@ -237,7 +432,7 @@ class LostFoundItem {
 
 ### Priority 5: Tracking Status Pipeline
 
-- [ ] **Status transition flow:** Pending Verification → Verified → Matched → Claimed → Closed
+- [ ] **Status transition flow:** Pending Verification → Verified → Matched → Claimed → Resolved → Closed
 - [ ] **User actions:** User can mark as "Found" or "Returned" from item detail
 - [ ] **Status history:** StatusTrackerWidget shows full audit trail with timestamps and who changed it
 - [ ] **Matched items:** When admin matches lost ↔ found, both items update status + link via `matchedItemId`
@@ -270,11 +465,11 @@ class LostFoundItem {
 | **Models** | `lib/models/lost_found_item.dart`, `lib/models/support_chat.dart`, `lib/models/support_message.dart` |
 | **Data layer** | `lib/data/firestore/item_repository.dart`, `lib/data/firestore/admin_repository.dart`, `lib/data/firestore/database_service.dart`, `lib/data/firestore/notification_service.dart`, `lib/data/firestore/support_chat_service.dart` |
 | **Storage** | `lib/data/storage/storage_service.dart` |
-| **Services** | `lib/services/auth_service.dart`, `lib/services/notification_service.dart` (FCM) |
-| **Admin screens** | `lib/screens/admin_dashboard.dart`, `lib/screens/admin_review_queue_screen.dart`, `lib/screens/admin_inbox_screen.dart`, `lib/screens/admin_chat_detail_screen.dart` |
+| **Services** | `lib/services/auth_service.dart`, `lib/services/notification_service.dart` (FCM), `lib/services/chat_service.dart` |
+| **Admin screens** | `lib/screens/admin_dashboard.dart`, `lib/screens/admin_review_queue_screen.dart`, `lib/screens/admin_resolved_screen.dart`, `lib/screens/admin_inbox_screen.dart`, `lib/screens/admin_chat_detail_screen.dart` |
 | **User screens** | `lib/screens/user_reports_screen.dart`, `lib/screens/user_chat_screen.dart`, `lib/screens/notifications_screen.dart` |
-| **Pages** | `lib/pages/browse_items_page.dart`, `lib/pages/messages_page.dart`, `lib/pages/report_lost_page.dart`, `lib/pages/submit_found_page.dart` |
-| **Widgets** | `lib/widgets/status_tracker_widget.dart`, `lib/widgets/chatbot.dart`, `lib/widgets/item_grid_card.dart` |
+| **Pages** | `lib/pages/browse_items_page.dart`, `lib/pages/messages_page.dart`, `lib/pages/report_lost_page.dart`, `lib/pages/submit_found_page.dart`, `lib/pages/home_page.dart`, `lib/pages/home_feed.dart` |
+| **Widgets** | `lib/widgets/status_tracker_widget.dart`, `lib/widgets/chatbot.dart`, `lib/widgets/item_grid_card.dart`, `lib/widgets/text_animations.dart`, `lib/widgets/auth_scaffold.dart`, `lib/widgets/greeting_header.dart`, `lib/widgets/search_bar.dart` |
 | **Cloud Functions** | `functions/src/index.ts` |
 | **Security** | `firestore.rules`, `firestore.indexes.json`, `storage.rules` |
 | **Config** | `firebase.json`, `functions/package.json`, `functions/tsconfig.json` |

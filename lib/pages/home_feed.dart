@@ -13,6 +13,7 @@ import '../widgets/feature_card.dart';
 import '../widgets/greeting_header.dart';
 import '../widgets/item_grid_card.dart';
 import '../widgets/search_bar.dart';
+import 'browse_items_page.dart';
 
 /// Home tab dashboard with real Firestore data.
 class HomeFeed extends StatefulWidget {
@@ -21,6 +22,7 @@ class HomeFeed extends StatefulWidget {
     this.userName,
     this.photoUrl,
     this.ownerUid,
+    this.overlayDismissed = false,
     this.onAiScan,
     this.onTabSelected,
     this.onComingSoon,
@@ -33,6 +35,7 @@ class HomeFeed extends StatefulWidget {
   final String? userName;
   final String? photoUrl;
   final String? ownerUid;
+  final bool overlayDismissed;
   final VoidCallback? onAiScan;
   final ValueChanged<int>? onTabSelected;
   final ValueChanged<String>? onComingSoon;
@@ -48,6 +51,7 @@ class HomeFeed extends StatefulWidget {
 class _HomeFeedState extends State<HomeFeed> {
   StreamSubscription<int>? _notifSub;
   int _notificationCount = 0;
+  bool _notificationsViewed = false;
 
   @override
   void initState() {
@@ -185,14 +189,26 @@ class _HomeFeedState extends State<HomeFeed> {
                     GreetingHeader(
                       userName: widget.userName,
                       photoUrl: widget.photoUrl,
+                      animateReveal: widget.overlayDismissed,
                       onNotifications: widget.onNotifications ??
                           () => _comingSoon('Notifications'),
                       onAvatarTap: _openAccountMenu,
-                      notificationCount: _notificationCount,
+                      notificationCount: _notificationsViewed ? 0 : _notificationCount,
                     ),
                     const SizedBox(height: 20),
                     HomeSearchBar(
-                      onSubmitted: (_) => _comingSoon('Item search'),
+                      onSubmitted: (query) {
+                        if (query.trim().isNotEmpty) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => BrowseItemsPage(
+                                initialSearchQuery: query.trim(),
+                              ),
+                            ),
+                          );
+                        }
+                      },
                       onFilter: () => _comingSoon('Filters'),
                     ),
                     const SizedBox(height: 20),
@@ -406,10 +422,11 @@ class _MyReportsStats extends StatelessWidget {
       stream: ItemRepository().streamUserItems(ownerUid),
       builder: (context, snapshot) {
         final items = snapshot.data ?? const <LostFoundItem>[];
-        final total = items.length;
-        final lost = items.where((i) => i.kind == ItemKind.lost).length;
-        final found = items.where((i) => i.kind == ItemKind.found).length;
-        final resolved = items
+        final approved = items.where((i) => i.moderationStatus == ModerationStatus.approved).toList();
+        final total = approved.length;
+        final lost = approved.where((i) => i.kind == ItemKind.lost).length;
+        final found = approved.where((i) => i.kind == ItemKind.found).length;
+        final resolved = approved
             .where((i) => i.status == ItemStatus.claimed || i.status == ItemStatus.closed)
             .length;
 

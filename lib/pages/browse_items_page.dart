@@ -14,10 +14,12 @@ class BrowseItemsPage extends StatefulWidget {
     super.key,
     this.initialKind = ItemKind.lost,
     this.repository,
+    this.initialSearchQuery,
   });
 
   final ItemKind initialKind;
   final ItemRepository? repository;
+  final String? initialSearchQuery;
 
   @override
   State<BrowseItemsPage> createState() => _BrowseItemsPageState();
@@ -71,10 +73,12 @@ class _BrowseItemsPageState extends State<BrowseItemsPage>
           _BrowseTab(
             kind: ItemKind.lost,
             repository: _repository,
+            initialSearchQuery: widget.initialSearchQuery,
           ),
           _BrowseTab(
             kind: ItemKind.found,
             repository: _repository,
+            initialSearchQuery: widget.initialSearchQuery,
           ),
         ],
       ),
@@ -87,10 +91,12 @@ class _BrowseTab extends StatefulWidget {
   const _BrowseTab({
     required this.kind,
     required this.repository,
+    this.initialSearchQuery,
   });
 
   final ItemKind kind;
   final ItemRepository repository;
+  final String? initialSearchQuery;
 
   @override
   State<_BrowseTab> createState() => _BrowseTabState();
@@ -104,6 +110,15 @@ class _BrowseTabState extends State<_BrowseTab>
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialSearchQuery != null && widget.initialSearchQuery!.isNotEmpty) {
+      _searchQuery = widget.initialSearchQuery!;
+      _searchController.text = _searchQuery;
+    }
+  }
 
   @override
   void dispose() {

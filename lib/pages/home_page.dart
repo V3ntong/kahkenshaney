@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
+import '../screens/item_detail_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/profile_screen.dart';
 import '../theme/app_theme.dart';
@@ -23,6 +25,7 @@ class HomePage extends StatefulWidget {
     this.onSignOut,
     this.onTabChanged,
     this.unreadCount = 0,
+    this.overlayDismissed = false,
   });
 
   final String? userName;
@@ -33,6 +36,7 @@ class HomePage extends StatefulWidget {
   final VoidCallback? onSignOut;
   final ValueChanged<int>? onTabChanged;
   final int unreadCount;
+  final bool overlayDismissed;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -48,6 +52,7 @@ class _HomePageState extends State<HomePage> {
         userName: widget.userName,
         photoUrl: widget.photoUrl,
         ownerUid: widget.ownerUid,
+        overlayDismissed: widget.overlayDismissed,
         onAiScan: () => _comingSoon('AI Scan'),
         onTabSelected: _goToTab,
         onComingSoon: _comingSoon,
@@ -114,9 +119,32 @@ class _HomePageState extends State<HomePage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => NotificationsScreen(userId: widget.ownerUid!),
+        builder: (_) => NotificationsScreen(
+          userId: widget.ownerUid!,
+          onNotificationTap: (itemId) {
+            if (itemId != null && itemId.isNotEmpty) {
+              _navigateToItem(itemId);
+            }
+          },
+        ),
       ),
     );
+  }
+
+  Future<void> _navigateToItem(String itemId) async {
+    try {
+      final item = await ItemRepository().getItem(itemId);
+      if (item != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ItemDetailScreen(item: item),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[HomePage] Error navigating to item: $e');
+    }
   }
 
   @override

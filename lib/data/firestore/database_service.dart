@@ -109,7 +109,8 @@ class DatabaseService {
   /// Create or overwrite a user profile in the `users` collection.
   ///
   /// Uses [SetOptions(merge: true)] so existing fields are not overwritten.
-  /// Automatically sets `isAdmin: true` for the designated admin email.
+  /// Automatically sets `isAdmin: true` for the designated admin email or
+  /// emails in the adminEmails collection.
   Future<void> createUserProfile({
     required String uid,
     required String email,
@@ -117,9 +118,17 @@ class DatabaseService {
     String role = 'user',
   }) async {
     try {
-      // Check if this email is the admin email.
-      final isAdmin = email.trim().toLowerCase() ==
+      // Check if this email is the admin email or in the adminEmails collection.
+      var isAdmin = email.trim().toLowerCase() ==
           kAdminEmail.toLowerCase();
+      if (!isAdmin) {
+        final adminEmailsSnapshot = await _db
+            .collection('adminEmails')
+            .where('email', isEqualTo: email.trim().toLowerCase())
+            .limit(1)
+            .get();
+        isAdmin = adminEmailsSnapshot.docs.isNotEmpty;
+      }
 
       await _db.collection('users').doc(uid).set({
         'email': email,
@@ -145,8 +154,16 @@ class DatabaseService {
     String? displayName,
   }) async {
     try {
-      final isAdmin = email.trim().toLowerCase() ==
+      var isAdmin = email.trim().toLowerCase() ==
           kAdminEmail.toLowerCase();
+      if (!isAdmin) {
+        final adminEmailsSnapshot = await _db
+            .collection('adminEmails')
+            .where('email', isEqualTo: email.trim().toLowerCase())
+            .limit(1)
+            .get();
+        isAdmin = adminEmailsSnapshot.docs.isNotEmpty;
+      }
       if (!isAdmin) return;
 
       await _db.collection('users').doc(uid).set({

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
+import '../services/auth_service.dart' show isAdminEmail;
 import '../theme/app_theme.dart';
 import '../widgets/item_grid_card.dart';
 import 'user_chat_screen.dart';
@@ -35,12 +36,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final imageUrl = item.displayUrl;
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final isOwner = currentUid != null && currentUid == item.ownerUid;
+    final isAdmin = isAdminEmail(FirebaseAuth.instance.currentUser?.email);
     final canContact = currentUid != null &&
         !isOwner &&
         !item.status.isTerminal &&
         item.ownerUid.isNotEmpty &&
         item.ownerUid != 'anonymous';
-    final canResolve = isOwner && !item.status.isTerminal;
+    final canResolve = isAdmin && !item.status.isTerminal;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -67,14 +69,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               background: imageUrl != null
                   ? Hero(
                       tag: 'item_image_${item.id}',
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        errorBuilder: (_, _, _) => _Placeholder(
-                          accent: accent,
-                          surface: accentSurface,
-                          isLost: isLost,
+                      child: ClipRect(
+                        child: SizedBox.expand(
+                          child: Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => _Placeholder(
+                              accent: accent,
+                              surface: accentSurface,
+                              isLost: isLost,
+                            ),
+                          ),
                         ),
                       ),
                     )
@@ -94,7 +99,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Type badge + Status + Category badge
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -126,13 +133,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
                       _StatusPill(status: item.status),
                       if (item.category != null &&
-                          item.category!.isNotEmpty) ...[
-                        const SizedBox(width: 8),
+                          item.category!.isNotEmpty)
                         _CategoryBadge(category: item.category!),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -332,6 +336,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   _RelatedItemsSection(
                     currentItemId: item.id,
                     category: item.category,
+                    currentItem: item,
                   ),
                 ],
               ),
@@ -572,10 +577,12 @@ class _RelatedItemsSection extends StatelessWidget {
   const _RelatedItemsSection({
     required this.currentItemId,
     this.category,
+    required this.currentItem,
   });
 
   final String currentItemId;
   final String? category;
+  final LostFoundItem currentItem;
 
   @override
   Widget build(BuildContext context) {
@@ -588,13 +595,16 @@ class _RelatedItemsSection extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final allItems = snapshot.data ?? const <LostFoundItem>[];
-        final related = allItems
-            .where((i) =>
-                i.id != currentItemId &&
-                i.category == category &&
-                !i.status.isTerminal)
-            .take(4)
-            .toList();
+
+        // Score-based related items matching
+        final scored = allItems
+            .where((i) => i.id != currentItemId && !i.status.isTerminal)
+            .map((i) => (item: i, score: _relatedScore(i, category!, currentItem)))
+            .where((e) => e.score > 0)
+            .toList()
+          ..sort((a, b) => b.score.compareTo(a.score));
+
+        final related = scored.take(4).map((e) => e.item).toList();
 
         if (related.isEmpty) return const SizedBox.shrink();
 
@@ -721,6 +731,8 @@ class _StatusPill extends StatelessWidget {
         ('MATCHED', AppColors.primary, AppColors.infoSurface),
       ItemStatus.claimed =>
         ('CLAIMED', AppColors.success, AppColors.successSurface),
+      ItemStatus.resolved =>
+        ('RESOLVED', AppColors.accent, AppColors.successSurface),
       ItemStatus.closed =>
         ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
     };
@@ -741,6 +753,32 @@ class _StatusPill extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Related Items Scoring ─────────────────────────────────────────────────
+
+/// Scores how related another item is to the current one.
+/// Higher score = more relevant. Returns 0 if not related at all.
+int _relatedScore(LostFoundItem other, String currentCategory, LostFoundItem current) {
+  int score = 0;
+
+  // Same category = strong match
+  if (other.category == currentCategory) score += 10;
+
+  // Similar title keywords = moderate match
+  final currentWords = current.title.toLowerCase().split(RegExp(r'\s+'));
+  final otherWords = other.title.toLowerCase().split(RegExp(r'\s+'));
+  final sharedWords = currentWords.where((w) => w.length > 2 && otherWords.contains(w)).length;
+  score += sharedWords * 3;
+
+  // Same location = slight match
+  if (other.location != null &&
+      current.location != null &&
+      other.location!.toLowerCase() == current.location!.toLowerCase()) {
+    score += 2;
+  }
+
+  return score;
 }
 
 // ─── Date Formatting ──────────────────────────────────────────────────────

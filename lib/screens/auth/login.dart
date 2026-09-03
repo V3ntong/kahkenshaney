@@ -55,6 +55,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     switch (result) {
       case AuthSuccess():
+        await _auth.refreshAdminStatus();
+        if (!mounted) return;
         final home = _auth.isAdminAuthenticated
             ? AdminDashboardScreen(authService: widget.authService)
             : DashboardScreen(authService: widget.authService);

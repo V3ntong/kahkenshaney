@@ -180,6 +180,10 @@ class NotificationService {
           'Item Archived',
           'Your ${item.kind.name} item "${item.title}" has been archived.',
         ),
+      ItemStatus.resolved => (
+          'Item Resolved',
+          'Your ${item.kind.name} item "${item.title}" has been resolved.',
+        ),
       ItemStatus.open => (
           'Item Submitted',
           'Your ${item.kind.name} item "${item.title}" has been submitted.',
@@ -193,5 +197,33 @@ class NotificationService {
       type: 'status_${newStatus.name}',
       relatedItemId: item.id,
     );
+  }
+
+  /// Notifies the admin when a new report is submitted.
+  Future<void> notifyAdminNewReport({
+    required LostFoundItem item,
+  }) async {
+    try {
+      final adminSnapshot = await _firestore
+          .collection('users')
+          .where('isAdmin', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (adminSnapshot.docs.isEmpty) return;
+
+      final adminUid = adminSnapshot.docs.first.id;
+      final kindLabel = item.kind == ItemKind.lost ? 'Lost' : 'Found';
+
+      await createNotification(
+        userId: adminUid,
+        title: 'New $kindLabel Item Report',
+        body: 'A new ${item.kind.name} item "${item.title}" has been submitted and is awaiting review.',
+        type: 'new_report',
+        relatedItemId: item.id,
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] notifyAdminNewReport error: $e');
+    }
   }
 }

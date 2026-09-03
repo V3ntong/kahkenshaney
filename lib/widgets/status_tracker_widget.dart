@@ -213,6 +213,7 @@ class StatusTrackerWidget extends StatelessWidget {
         ItemStatus.matched => AppColors.primary,
         ItemStatus.claimed => AppColors.success,
         ItemStatus.closed => AppColors.textTertiary,
+        ItemStatus.resolved => AppColors.success,
       };
 
   String _formatDate(DateTime date) {

@@ -58,4 +58,39 @@ class AdminRepository {
       return total;
     });
   }
+
+  /// Stream of admin emails from the adminEmails collection.
+  Stream<List<Map<String, dynamic>>> streamAdminEmails() {
+    return _db.collection('adminEmails').snapshots().map(
+          (snap) => snap.docs.map((doc) => {
+                'id': doc.id,
+                ...doc.data(),
+              }).toList(),
+        );
+  }
+
+  /// Adds an admin email to the adminEmails collection.
+  Future<void> addAdminEmail(String email) async {
+    final normalized = email.trim().toLowerCase();
+    await _db.collection('adminEmails').add({
+      'email': normalized,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Removes an admin email from the adminEmails collection.
+  Future<void> removeAdminEmail(String docId) async {
+    await _db.collection('adminEmails').doc(docId).delete();
+  }
+
+  /// Checks if an email is in the adminEmails collection.
+  Future<bool> isEmailAdmin(String email) async {
+    final normalized = email.trim().toLowerCase();
+    final snapshot = await _db
+        .collection('adminEmails')
+        .where('email', isEqualTo: normalized)
+        .limit(1)
+        .get();
+    return snapshot.docs.isNotEmpty;
+  }
 }

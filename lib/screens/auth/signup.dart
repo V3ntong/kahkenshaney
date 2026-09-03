@@ -9,6 +9,7 @@ import '../../widgets/app_text_field.dart';
 import '../../widgets/auth_scaffold.dart';
 import '../../widgets/password_strength.dart';
 import '../../utils/page_transitions.dart';
+import 'login.dart';
 import 'otp_screen.dart';
 import 'terms_conditions_screen.dart';
 
@@ -31,16 +32,45 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _loading = false;
   String? _error;
   bool _agreedToTerms = false;
+  bool _emailManuallyEdited = false;
 
   late final AuthService _auth = widget.authService ?? FirebaseAuthService();
 
   @override
+  void initState() {
+    super.initState();
+    _nameController.addListener(_onNameChanged);
+  }
+
+  @override
   void dispose() {
+    _nameController.removeListener(_onNameChanged);
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
+  }
+
+  void _onNameChanged() {
+    if (_emailManuallyEdited) return;
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      _emailController.clear();
+      return;
+    }
+    final email = _suggestEmail(name);
+    if (email != null) {
+      _emailController.text = email;
+    }
+  }
+
+  String? _suggestEmail(String fullName) {
+    final parts = fullName.toLowerCase().trim().split(RegExp(r'\s+'));
+    if (parts.length < 2) return null;
+    final surname = parts.last;
+    final firstName = parts.first;
+    return '$surname.$firstName@smctagum.edu.ph';
   }
 
   Future<void> _submit() async {
@@ -117,7 +147,7 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Create Account',
-      subtitle: 'Powered by AI and Machine Learning to turn lost into found.',
+      subtitle: 'Powered by AI and ML to turn lost into found.',
       footer: Wrap(
         alignment: WrapAlignment.center,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -130,7 +160,14 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
           AppTextButton(
             label: 'Log In',
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                SharedAxisRoute(
+                  builder: (_) => LoginScreen(authService: widget.authService),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -154,12 +191,17 @@ class _SignupScreenState extends State<SignupScreen> {
               AppTextField(
                 controller: _emailController,
                 label: 'Email Address',
-                hintText: 'Enter your email',
+                hintText: 'surname.name@smctagum.edu.ph',
                 prefixIcon: Icons.mail_outline_rounded,
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
                 autofillHints: const [AutofillHints.email],
                 validator: Validators.email,
+                onChanged: (_) {
+                  if (!_emailManuallyEdited) {
+                    _emailManuallyEdited = true;
+                  }
+                },
               ),
               const SizedBox(height: 16),
               AppTextField(

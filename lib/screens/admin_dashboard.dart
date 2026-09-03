@@ -17,8 +17,8 @@ import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/image_picker_sheet.dart';
-import '../widgets/metric_counter.dart';
 import 'admin_inbox_screen.dart';
+import 'admin_resolved_screen.dart';
 import 'admin_review_queue_screen.dart';
 import 'auth/login.dart';
 import 'dashboard.dart';
@@ -145,18 +145,41 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _selectSection(int index) {
     if (index == _sidebarSections.length - 1) {
-      _signOut();
+      _confirmSignOut();
       return;
     }
     setState(() => _selectedIndex = index);
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    // Close drawer on narrow screens — maybePop is safe even if no drawer is open
+    Navigator.of(context).maybePop();
+  }
+
+  Future<void> _confirmSignOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log out'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _signOut();
+    }
   }
 
   static const _sidebarSections = <_NavItem>[
     _NavItem(label: 'Dashboard', icon: Icons.space_dashboard_rounded),
     _NavItem(label: 'Review Queue', icon: Icons.fact_check_rounded),
-    _NavItem(label: 'Lost Items', icon: Icons.fmd_bad_rounded),
-    _NavItem(label: 'Found Items', icon: Icons.inventory_2_rounded),
+    _NavItem(label: 'Resolved', icon: Icons.verified_rounded),
     _NavItem(label: 'Reports', icon: Icons.receipt_long_rounded),
     _NavItem(label: 'Users', icon: Icons.people_alt_rounded),
     _NavItem(label: 'Messages', icon: Icons.chat_bubble_rounded),
@@ -242,17 +265,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         );
       case 1:
         return AdminReviewQueueScreen(adminUid: _auth.currentUser?.uid ?? '');
-      case 6:
-        return AdminInboxScreen(adminUid: _auth.currentUser?.uid ?? '');
+      case 2:
+        return AdminResolvedScreen(adminUid: _auth.currentUser?.uid ?? '');
+      case 3:
+        return const _SectionPlaceholder(icon: Icons.receipt_long_rounded, title: 'Reports');
+      case 4:
+        return _UsersSection(usersStream: _usersListStream, adminRepository: _repository);
       case 5:
-        return _UsersSection(usersStream: _usersListStream);
-      case 7:
+        return AdminInboxScreen(adminUid: _auth.currentUser?.uid ?? '');
+      case 6:
         return _AdminProfileSection(
           adminUid: _auth.currentUser?.uid ?? '',
           adminName: adminName,
           adminEmail: _adminEmail(),
         );
-      case 8:
+      case 7:
         return _SettingsSection(onNotice: _showNotice);
       default:
         final item = sections[_selectedIndex];
@@ -356,7 +383,7 @@ class _Sidebar extends StatelessWidget {
               _SidebarItem(
                 item: sections[i],
                 selected: selectedIndex == i,
-                unreadCount: i == 6 ? unreadCount : 0, // Messages index = 6
+                unreadCount: i == 4 ? unreadCount : 0, // Messages index = 4
                 onTap: () => onSelect(i),
               ),
             ],
@@ -1737,9 +1764,11 @@ String _statusLabel(ItemStatus status) {
     case ItemStatus.verified:
       return 'Verified';
     case ItemStatus.matched:
-      return 'Resolved';
+      return 'Matched';
     case ItemStatus.claimed:
       return 'Claimed';
+    case ItemStatus.resolved:
+      return 'Resolved';
     case ItemStatus.closed:
       return 'Closed';
   }
@@ -1791,14 +1820,20 @@ class _StatusBadge extends StatelessWidget {
         );
       case ItemStatus.matched:
         return const _Badge(
-          label: 'Resolved',
-          color: AppColors.info,
+          label: 'Matched',
+          color: AppColors.primary,
           tint: AppColors.infoSurface,
         );
       case ItemStatus.claimed:
         return const _Badge(
           label: 'Claimed',
           color: AppColors.success,
+          tint: AppColors.successSurface,
+        );
+      case ItemStatus.resolved:
+        return const _Badge(
+          label: 'Resolved',
+          color: AppColors.accent,
           tint: AppColors.successSurface,
         );
       case ItemStatus.closed:
@@ -2109,9 +2144,10 @@ class _PanelCard extends StatelessWidget {
 // ── Users section ──────────────────────────────────────────────────────────
 
 class _UsersSection extends StatelessWidget {
-  const _UsersSection({required this.usersStream});
+  const _UsersSection({required this.usersStream, required this.adminRepository});
 
   final Stream<List<Map<String, dynamic>>>? usersStream;
+  final AdminRepository? adminRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -2129,6 +2165,9 @@ class _UsersSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Admin Management Card
+              _AdminManagementCard(adminRepository: adminRepository),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   const Expanded(
@@ -2261,6 +2300,224 @@ class _UsersSection extends StatelessWidget {
   }
 }
 
+// ── Admin Management Card ──────────────────────────────────────────────────
+
+class _AdminManagementCard extends StatefulWidget {
+  const _AdminManagementCard({required this.adminRepository});
+
+  final AdminRepository? adminRepository;
+
+  @override
+  State<_AdminManagementCard> createState() => _AdminManagementCardState();
+}
+
+class _AdminManagementCardState extends State<_AdminManagementCard> {
+  final _emailController = TextEditingController();
+  bool _adding = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addAdminEmail() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid email address')),
+      );
+      return;
+    }
+
+    setState(() => _adding = true);
+    try {
+      await widget.adminRepository?.addAdminEmail(email);
+      _emailController.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$email added as admin')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add admin: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: AppColors.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySurface,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(Icons.admin_panel_settings_rounded, size: 19, color: AppColors.primary),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Admin Management',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Add admin access for users by entering their email address.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    hintText: 'user@smctagum.edu.ph',
+                    prefixIcon: Icon(Icons.email_outlined),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _adding ? null : _addAdminEmail,
+                  icon: _adding
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _AdminEmailList(adminRepository: widget.adminRepository),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminEmailList extends StatelessWidget {
+  const _AdminEmailList({required this.adminRepository});
+
+  final AdminRepository? adminRepository;
+
+  @override
+  Widget build(BuildContext context) {
+    if (adminRepository == null) return const SizedBox.shrink();
+
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: adminRepository!.streamAdminEmails(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(8),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+
+        final emails = snapshot.data ?? const [];
+
+        if (emails.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No additional admin emails added yet.',
+              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            for (final entry in emails)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.admin_panel_settings_rounded, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        entry['email'] as String? ?? '',
+                        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      color: AppColors.textTertiary,
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Remove Admin'),
+                            content: Text('Remove admin access for ${entry['email']}?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Remove'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await adminRepository!.removeAdminEmail(entry['id']);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ── User Row ────────────────────────────────────────────────────────────────
+
 class _UserRow extends StatelessWidget {
   const _UserRow({required this.user});
 
@@ -2378,9 +2635,6 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
   bool _saving = false;
   bool _editing = false;
   String? _photoUrl;
-  int _reportsCount = 0;
-  int _foundCount = 0;
-  int _lostCount = 0;
 
   @override
   void initState() {
@@ -2388,7 +2642,6 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
     _nameCtrl = TextEditingController(text: widget.adminName);
     _bioCtrl = TextEditingController(text: '');
     _loadProfile();
-    _loadStats();
   }
 
   @override
@@ -2415,28 +2668,6 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
       }
     } catch (e) {
       debugPrint('[AdminProfile] _loadProfile error: $e');
-    }
-  }
-
-  Future<void> _loadStats() async {
-    if (widget.adminUid.isEmpty) return;
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('items')
-          .where('ownerUid', isEqualTo: widget.adminUid)
-          .get();
-      final items = snap.docs;
-      setState(() {
-        _reportsCount = items.length;
-        _foundCount = items
-            .where((d) => (d.data()['kind'] as String?) == 'found')
-            .length;
-        _lostCount = items
-            .where((d) => (d.data()['kind'] as String?) == 'lost')
-            .length;
-      });
-    } catch (e) {
-      debugPrint('[AdminProfile] _loadStats error: $e');
     }
   }
 
@@ -2615,20 +2846,6 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      MetricCounter(
-                          value: _reportsCount, label: 'Reports'),
-                      const SizedBox(width: 32),
-                      MetricCounter(
-                          value: _foundCount, label: 'Found'),
-                      const SizedBox(width: 32),
-                      MetricCounter(
-                          value: _lostCount, label: 'Lost'),
-                    ],
-                  ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: 200,

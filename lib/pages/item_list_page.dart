@@ -410,6 +410,7 @@ class _StatusPill extends StatelessWidget {
       ItemStatus.matched => ('MATCHED', AppColors.primary, AppColors.infoSurface),
       ItemStatus.claimed => ('CLAIMED', AppColors.success, AppColors.successSurface),
       ItemStatus.closed => ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
+      ItemStatus.resolved => ('RESOLVED', AppColors.success, AppColors.successSurface),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

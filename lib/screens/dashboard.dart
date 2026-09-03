@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../pages/home_page.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
-import '../widgets/app_logo.dart';
 import '../widgets/chatbot.dart';
+import '../widgets/text_animations.dart';
 import 'auth/change_password_screen.dart';
 import 'auth/login.dart';
 
@@ -30,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   late final AnimationController _welcomeFade;
   bool _welcomeVisible = true;
+  bool _overlayDismissed = false;
   int _currentTab = 0;
   int _unreadCount = 0;
 
@@ -81,7 +83,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _dismissWelcome() {
     if (!_welcomeVisible) return;
     _welcomeFade.reverse().whenComplete(() {
-      if (mounted) setState(() => _welcomeVisible = false);
+      if (mounted) {
+        setState(() {
+          _welcomeVisible = false;
+          _overlayDismissed = true;
+        });
+      }
     });
   }
 
@@ -145,6 +152,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           onSignOut: _signOut,
           onTabChanged: (index) => setState(() => _currentTab = index),
           unreadCount: _unreadCount,
+          overlayDismissed: _overlayDismissed,
         ),
         if (_currentTab != 4) const ChatbotButton(),
         if (_welcomeVisible) _buildWelcomeOverlay(displayName),
@@ -180,28 +188,28 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ],
                 ),
-                  child: Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Hero(
-                      tag: 'app-logo',
-                      child: AppLogo(size: 64),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Welcome, $displayName!',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                    BlurRevealText(
+                      text: 'Welcome, $displayName!',
+                      duration: const Duration(milliseconds: 800),
+                      delay: const Duration(milliseconds: 200),
+                      maxBlur: 10,
+                      slideOffset: 16,
+                      style: GoogleFonts.bebasNeue(
+                        fontSize: 26,
                         color: AppColors.textPrimary,
+                        letterSpacing: 1.0,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Tap anywhere to continue',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
+                    TypewriterText(
+                      text: 'Tap anywhere to continue',
+                      speed: const Duration(milliseconds: 8),
+                      delay: const Duration(milliseconds: 100),
+                      showCursor: false,
+                      style: GoogleFonts.lobsterTwo(
                         color: AppColors.textTertiary,
                         fontSize: 14,
                       ),

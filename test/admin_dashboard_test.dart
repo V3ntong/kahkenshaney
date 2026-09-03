@@ -90,6 +90,9 @@ class _FakeAuthService implements AuthService {
     required String otp,
     required String newPassword,
   }) async {}
+
+  @override
+  Future<bool> refreshAdminStatus() async => true;
 }
 
 List<LostFoundItem> _sampleItems() {

@@ -82,6 +82,9 @@ class _FakeAuthService implements AuthService {
     required String otp,
     required String newPassword,
   }) async {}
+
+  @override
+  Future<bool> refreshAdminStatus() async => isAdmin;
 }
 
 Future<void> _submitLogin(WidgetTester tester) async {

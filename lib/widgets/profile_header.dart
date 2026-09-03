@@ -45,7 +45,6 @@ class ProfileHeader extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        MetricCounter(value: provider.reportsCount, label: 'Reports'),
                         MetricCounter(value: provider.foundCount, label: 'Found'),
                         MetricCounter(value: provider.lostCount, label: 'Lost'),
                       ],

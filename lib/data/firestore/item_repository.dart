@@ -120,6 +120,23 @@ class ItemRepository {
         );
   }
 
+  /// Admin: approved items that are NOT yet resolved/claimed/closed.
+  Stream<List<LostFoundItem>> streamNonTerminalItems() {
+    return _items
+        .where('moderationStatus', isEqualTo: 'approved')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .handleError((error) {
+      debugPrint('[ItemRepository] streamNonTerminalItems error: $error');
+      return const Stream.empty();
+    }).map(
+      (snap) => snap.docs
+          .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
+          .where((item) => !item.status.isTerminal)
+          .toList(),
+    );
+  }
+
   /// Update item fields.
   Future<void> updateItem(LostFoundItem item) async {
     await _items.doc(item.id).update(item.toMap());

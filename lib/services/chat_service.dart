@@ -27,7 +27,7 @@ class ChatMessage {
 class ChatService {
   ChatService({
     this._client,
-    this.timeout = const Duration(seconds: 60),
+    this.timeout = const Duration(seconds: 30),
   });
 
   /// Optional injected client (used by tests). When null, a fresh client is
@@ -46,35 +46,23 @@ class ChatService {
       'https://generativelanguage.googleapis.com/v1beta';
 
   static const String _systemInstruction = '''
-You are the official AI assistant for KAH KEN SHA NEY — an AI and ML-powered application that turns your lost into found.
+You are the official AI assistant for KAH KEN SHA NEY — an AI-powered Lost & Found app.
 
-Your task is to explain app features, give instructions, and share details based on the project documentation. You may also answer questions about who developed KAH KEN SHA NEY or this assistant using the Developer Information below. If a user asks about anything unrelated, politely decline and steer them back to the app.
+Be concise and helpful. Answer in 2-3 sentences max unless more detail is needed. Focus on app features and functionality.
 
 App Features:
-- Report Lost Items: Users can report items they lost with details like name, category, color, date, location, and photos.
-- Submit Found Items: Users can submit items they found so the system can match them with lost reports.
-- AI Matching: The app uses AI to match lost and found items based on descriptions, photos, and metadata.
-- AI Camera Scanner: Users can point their camera at an item to identify and match it.
-- User Authentication: Secure email/password login with OTP verification.
-- Real-time Updates: Item lists update in real-time via Firestore streams.
-- Profile Management: Users can view their profile and change their password.
-- Messages: Chat with finders and the Lost & Found office (coming soon).
+- Report Lost/Found Items with details like name, category, color, date, location, and photos.
+- AI Matching: matches lost and found items automatically.
+- AI Camera Scanner: identify items by pointing your camera.
+- User Authentication: secure email/password login with OTP.
+- Real-time Updates: item lists update in real-time.
+- Profile Management: view profile and change password.
+- Messages: chat with finders and the Lost & Found office.
 
 Developer Information:
-
-KAH KEN SHA NEY was developed by:
-- Melvin Maquilan
-- Cristian Jim Pogoy
-- Axl Moraleja
-- Aldrian Dajes
-
-They are 3rd-year BSCS (Bachelor of Science in Computer Science) students at SMCTI.
-
-Developer questions must be answered briefly and completely. When asked who developed, created, made, built, or is behind KAH KEN SHA NEY or this assistant, respond with exactly the verified developer information below. Do not omit any developer names. Do not start with unnecessary phrases such as "I am the Official AI assistant", "I am an AI-powered assistant", "Hello!", or "Let me tell you". Do not use Markdown bold or bullet lists. Use plain text only:
-
 KAH KEN SHA NEY was developed by Melvin Maquilan, Cristian Jim Pogoy, Axl Moraleja, and Aldrian Dajes. They are 3rd-year BSCS students at SMCTI.
 
-Do not invent additional information about the developers.
+Do not invent information beyond the app features listed above.
 ''';
 
   final List<ChatMessage> _history = [];
@@ -141,8 +129,10 @@ Do not invent additional information about the developers.
           ],
         },
         'generationConfig': {
-          'maxOutputTokens': 2048,
-          'temperature': 0.4,
+          'maxOutputTokens': 1024,
+          'temperature': 0.3,
+          'topP': 0.8,
+          'topK': 40,
         },
       });
 
@@ -179,11 +169,15 @@ Do not invent additional information about the developers.
 
   /// Converts the stored conversation into Gemini `contents`, guaranteeing an
   /// alternating `user`/`model` pattern and that the current message appears
-  /// exactly once.
+  /// exactly once. Limits history to last 10 messages for faster responses.
   List<Map<String, dynamic>> _buildContents(String trimmed) {
     final contents = <Map<String, dynamic>>[];
 
-    for (final msg in _history) {
+    // Limit history to last 10 messages for faster API responses
+    final startIdx = _history.length > 10 ? _history.length - 10 : 0;
+    final recentHistory = _history.sublist(startIdx);
+
+    for (final msg in recentHistory) {
       final text = msg.text.trim();
       if (text.isEmpty) continue;
       final role = msg.isUser ? 'user' : 'model';

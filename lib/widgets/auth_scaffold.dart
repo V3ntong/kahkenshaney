@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
 import 'app_logo.dart';
+import 'text_animations.dart';
 
 /// Centered, responsive layout shared by all authentication screens.
 class AuthScaffold extends StatelessWidget {
@@ -28,25 +28,10 @@ class AuthScaffold extends StatelessWidget {
       children: [
         const Center(child: AppLogo()),
         const SizedBox(height: 24),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
+        AnimatedAuthHeader(
+          title: title,
+          subtitle: subtitle,
         ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            subtitle!,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.5,
-                ),
-          ),
-        ],
         const SizedBox(height: 32),
         ...children,
       ],

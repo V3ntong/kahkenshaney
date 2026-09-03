@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import 'screens/auth/login.dart';
+import 'screens/auth/signup.dart';
 import 'theme/app_theme.dart';
 import 'utils/page_transitions.dart';
 import 'widgets/app_logo.dart';
+import 'widgets/text_animations.dart';
 
 class MainPage extends StatelessWidget {
   const MainPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
@@ -37,32 +37,38 @@ class MainPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 32),
 
-                      // Headline
-                      Text(
-                        'KAH KEN SHA NEY',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
+                      // Headline with blur-to-focus animation (Bebas Neue)
+                      BlurRevealText(
+                        text: 'KAH KEN SHA NEY',
+                        duration: const Duration(milliseconds: 1200),
+                        maxBlur: 14,
+                        slideOffset: 24,
+                        style: GoogleFonts.bebasNeue(
+                          fontSize: 36,
                           color: AppColors.textPrimary,
+                          letterSpacing: 2.0,
                         ),
                       ),
                       const SizedBox(height: 12),
 
-                      // Subtitle
-                      Text(
-                        "We find what your memory can't. For people who lose "
-                        'things more often than they change their socks.',
+                      // Subtitle with typewriter animation (Lobster Two)
+                      TypewriterText(
+                        text:
+                            "We find what your memory can't. For people who lose "
+                            'things more often than they change their socks.',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyLarge?.copyWith(
+                        speed: const Duration(milliseconds: 5),
+                        delay: const Duration(milliseconds: 300),
+                        showCursor: false,
+                        style: GoogleFonts.lobsterTwo(
+                          fontSize: 15,
                           color: AppColors.textSecondary,
                           height: 1.5,
-                          fontSize: 15,
                         ),
                       ),
                       const SizedBox(height: 40),
 
-                      // Get Started button — wider, taller, more prominent
+                      // Get Started button — redirects to Sign Up
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -70,7 +76,7 @@ class MainPage extends StatelessWidget {
                             Navigator.push(
                               context,
                               FadeSlideRoute(
-                                builder: (context) => const LoginScreen(),
+                                builder: (context) => const SignupScreen(),
                               ),
                             );
                           },
@@ -93,7 +99,8 @@ class MainPage extends StatelessWidget {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             elevation: 2,
-                            shadowColor: AppColors.primary.withValues(alpha: 0.3),
+                            shadowColor:
+                                AppColors.primary.withValues(alpha: 0.3),
                           ),
                         ),
                       ),
@@ -117,8 +124,6 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -128,12 +133,12 @@ class _Footer extends StatelessWidget {
         ),
       ),
       child: Text(
-        '© ${DateTime.now().year} KAH KEN SHA NEY. All rights reserved.',
+        '\u00a9 ${DateTime.now().year} KAH KEN SHA NEY. All rights reserved.',
         textAlign: TextAlign.center,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: AppColors.textTertiary,
-          fontSize: 12,
-        ),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textTertiary,
+              fontSize: 12,
+            ),
       ),
     );
   }

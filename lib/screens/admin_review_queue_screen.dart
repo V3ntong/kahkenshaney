@@ -29,6 +29,7 @@ class AdminReviewQueueScreen extends StatefulWidget {
 class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
   late final ItemRepository _repo;
   late final NotificationService _notifService;
+  List<LostFoundItem>? _localItems;
 
   @override
   void initState() {
@@ -38,10 +39,20 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
   }
 
   Future<void> _updateModeration(
-      LostFoundItem item, ModerationStatus status) async {
-    await _repo.updateItemFields(item.id, {
+      LostFoundItem item, ModerationStatus status, {String? reason}) async {
+    // Instantly remove from local list for immediate UI feedback
+    if (_localItems != null) {
+      setState(() {
+        _localItems = _localItems!..removeWhere((i) => i.id == item.id);
+      });
+    }
+    final updates = <String, dynamic>{
       'moderationStatus': status.firestoreValue,
-    });
+    };
+    if (reason != null && reason.isNotEmpty) {
+      updates['rejectionReason'] = reason;
+    }
+    await _repo.updateItemFields(item.id, updates);
     await _notifService.notifyModerationChange(item: item, newStatus: status);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -59,6 +70,13 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
       'changedAt': DateTime.now(),
       'changedBy': widget.adminUid,
     });
+
+    // Mark as Resolved removes from pending queue instantly
+    if (newStatus == ItemStatus.resolved && _localItems != null) {
+      setState(() {
+        _localItems = _localItems!..removeWhere((i) => i.id == item.id);
+      });
+    }
 
     final updates = <String, dynamic>{
       'status': newStatus.firestoreValue,
@@ -84,8 +102,66 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
       builder: (_) => _ItemDetailSheet(
         item: item,
         adminUid: widget.adminUid,
-        onModerate: (status) => _updateModeration(item, status),
+        onModerate: (status, {reason}) async {
+          await _updateModeration(item, status, reason: reason);
+          if (mounted) Navigator.of(context).pop();
+        },
         onStatusChange: (status) => _updateItemStatus(item, status),
+      ),
+    );
+  }
+
+  void _showRejectDialog(LostFoundItem item) {
+    final reasonCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Reject Item'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Provide a reason for rejecting this item. The reporter will be notified.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'e.g. Incomplete information, duplicate report...',
+                hintStyle: TextStyle(color: AppColors.textTertiary),
+                filled: true,
+                fillColor: AppColors.background,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.error, width: 1.6),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _updateModeration(item, ModerationStatus.rejected,
+                  reason: reasonCtrl.text.trim());
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Reject'),
+          ),
+        ],
       ),
     );
   }
@@ -97,7 +173,27 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
       body: StreamBuilder<List<LostFoundItem>>(
         stream: _repo.streamPendingItems(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          // Sync local list from stream (stream is the source of truth for adds)
+          if (snapshot.hasData && _localItems == null) {
+            _localItems = snapshot.data;
+          } else if (snapshot.hasData && snapshot.data!.length != _localItems!.length) {
+            // Stream has new data (e.g. new items added) — merge
+            final streamIds = snapshot.data!.map((i) => i.id).toSet();
+            final localIds = _localItems!.map((i) => i.id).toSet();
+            // Add any new items from stream that aren't in local list
+            final newFromStream = snapshot.data!
+                .where((i) => !localIds.contains(i.id))
+                .toList();
+            if (newFromStream.isNotEmpty) {
+              _localItems = [...newFromStream, ..._localItems!];
+            }
+            // Remove any items from local that no longer exist in stream
+            _localItems = _localItems!
+                .where((i) => streamIds.contains(i.id))
+                .toList();
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting && _localItems == null) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             );
@@ -120,7 +216,7 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
             );
           }
 
-          final items = snapshot.data ?? const <LostFoundItem>[];
+          final items = _localItems ?? snapshot.data ?? const <LostFoundItem>[];
 
           if (items.isEmpty) {
             return Center(
@@ -161,7 +257,7 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
                 item: item,
                 onTap: () => _showItemDetail(item),
                 onApprove: () => _updateModeration(item, ModerationStatus.approved),
-                onReject: () => _updateModeration(item, ModerationStatus.rejected),
+                onReject: () => _showRejectDialog(item),
               );
             },
           );
@@ -355,7 +451,7 @@ class _ItemDetailSheet extends StatelessWidget {
 
   final LostFoundItem item;
   final String adminUid;
-  final ValueChanged<ModerationStatus> onModerate;
+  final void Function(ModerationStatus status, {String? reason}) onModerate;
   final ValueChanged<ItemStatus> onStatusChange;
 
   @override
@@ -464,7 +560,16 @@ class _ItemDetailSheet extends StatelessWidget {
                   if (item.status == ItemStatus.matched)
                     _StatusButton(label: 'Claimed', color: AppColors.success, onTap: () => onStatusChange(ItemStatus.claimed)),
                   if (item.status == ItemStatus.claimed)
+                    _StatusButton(label: 'Resolved', color: AppColors.accent, onTap: () => onStatusChange(ItemStatus.resolved)),
+                  if (item.status == ItemStatus.resolved)
                     _StatusButton(label: 'Archived', color: AppColors.textTertiary, onTap: () => onStatusChange(ItemStatus.closed)),
+                  // Mark as Resolved — available from any non-terminal status
+                  if (!item.status.isTerminal && item.status != ItemStatus.resolved)
+                    _StatusButton(
+                      label: 'Mark as Resolved',
+                      color: AppColors.accent,
+                      onTap: () => onStatusChange(ItemStatus.resolved),
+                    ),
                 ],
               ),
 
@@ -486,7 +591,14 @@ class _ItemDetailSheet extends StatelessWidget {
                     child: _StatusButton(
                       label: 'Reject',
                       color: AppColors.error,
-                      onTap: () => onModerate(ModerationStatus.rejected),
+                      onTap: () {
+                        // Close the detail sheet first, then show reject dialog
+                        Navigator.of(context).pop();
+                        // We need to call the parent's reject dialog — use a post-frame callback
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          // The parent screen handles the dialog
+                        });
+                      },
                     ),
                   ),
                 ],

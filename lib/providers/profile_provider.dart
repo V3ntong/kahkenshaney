@@ -68,11 +68,12 @@ class ProfileProvider extends ChangeNotifier {
       notifyListeners();
     }, onError: (_) {});
 
-    // Listen to user's items to compute report statistics
+    // Listen to user's items to compute report statistics (only approved items)
     _itemsSub = ItemRepository().streamUserItems(uid).listen((items) {
-      _reportsCount = items.length;
-      _foundCount = items.where((i) => i.kind == ItemKind.found).length;
-      _lostCount = items.where((i) => i.kind == ItemKind.lost).length;
+      final approved = items.where((i) => i.moderationStatus == ModerationStatus.approved).toList();
+      _reportsCount = approved.length;
+      _foundCount = approved.where((i) => i.kind == ItemKind.found).length;
+      _lostCount = approved.where((i) => i.kind == ItemKind.lost).length;
       notifyListeners();
     }, onError: (_) {});
   }

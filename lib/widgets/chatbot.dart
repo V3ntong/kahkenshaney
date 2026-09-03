@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/chat_service.dart';
 import '../theme/app_theme.dart';
@@ -47,6 +48,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _chatService = ChatService();
+  bool _isTyping = false;
 
   @override
   void dispose() {
@@ -72,15 +74,15 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty) return;
 
     _controller.clear();
+    HapticFeedback.lightImpact();
 
-    // Add user message to history immediately so it shows in the UI
     _chatService.addUserMessage(text);
-    setState(() {});
+    setState(() => _isTyping = true);
     _scrollToBottom();
 
-    // Fire-and-forget: let the stream of history updates handle display.
     _chatService.sendMessage(text).then((reply) {
       if (!mounted) return;
+      setState(() => _isTyping = false);
 
       final history = _chatService.history;
       if (reply.isNotEmpty &&
@@ -91,6 +93,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
     }).catchError((e) {
       if (!mounted) return;
+      setState(() => _isTyping = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to get response. Please try again.')),
       );
@@ -118,6 +121,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _buildWelcome()
                     : _buildMessages(),
               ),
+              if (_isTyping) _buildTypingIndicator(),
               _buildInput(),
             ],
           ),
@@ -132,16 +136,16 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.smart_toy_rounded,
               color: Colors.white,
-              size: 20,
+              size: 22,
             ),
           ),
           const SizedBox(width: 12),
@@ -194,25 +198,26 @@ class _ChatScreenState extends State<ChatScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 64,
-              height: 64,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(22),
               ),
               child: const Icon(
                 Icons.smart_toy_rounded,
                 color: Colors.white,
-                size: 32,
+                size: 36,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             const Text(
               'Hi! I\'m KashTeP',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
+                letterSpacing: -0.3,
               ),
             ),
             const SizedBox(height: 8),
@@ -225,7 +230,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -256,6 +261,47 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTypingIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.smart_toy_rounded,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'KashTeP is thinking...',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textTertiary,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -312,11 +358,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Container(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             width: 44,
             height: 44,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
+            decoration: BoxDecoration(
+              color: _controller.text.trim().isEmpty
+                  ? AppColors.textTertiary.withValues(alpha: 0.3)
+                  : AppColors.primary,
               shape: BoxShape.circle,
             ),
             child: IconButton(

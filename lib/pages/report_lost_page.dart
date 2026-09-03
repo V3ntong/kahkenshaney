@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
+import '../data/firestore/notification_service.dart';
 import '../data/storage/storage_service.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
@@ -103,14 +103,14 @@ class _ReportLostPageState extends State<ReportLostPage> {
           ),
         );
 
-        // Increment user report counters
-        final uid = _currentUid();
-        if (uid != 'anonymous') {
-          await FirebaseFirestore.instance.collection('users').doc(uid).update({
-            'reportsCount': FieldValue.increment(1),
-            'lostCount': FieldValue.increment(1),
-          });
-        }
+        // Notify admin of new report
+        await NotificationService().notifyAdminNewReport(
+          item: item.copyWith(
+            media: urls,
+            imageUrl: primaryResult?.url,
+            storagePath: primaryResult?.path,
+          ),
+        );
       }
 
       if (!mounted) return;

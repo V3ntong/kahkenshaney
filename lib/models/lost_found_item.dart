@@ -19,6 +19,7 @@ enum ItemStatus {
   verified,
   matched,
   claimed,
+  resolved,
   closed,
 }
 
@@ -31,6 +32,7 @@ extension ItemStatusX on ItemStatus {
         ItemStatus.verified => 'Verified',
         ItemStatus.matched => 'Matched',
         ItemStatus.claimed => 'Claimed',
+        ItemStatus.resolved => 'Resolved',
         ItemStatus.closed => 'Archived',
       };
 
@@ -40,11 +42,15 @@ extension ItemStatusX on ItemStatus {
         ItemStatus.verified => 'Verified',
         ItemStatus.matched => 'Matched',
         ItemStatus.claimed => 'Claimed',
+        ItemStatus.resolved => 'Resolved',
         ItemStatus.closed => 'Archived',
       };
 
   /// Returns true if this status is a "final" state (item is done).
-  bool get isTerminal => this == ItemStatus.claimed || this == ItemStatus.closed;
+  bool get isTerminal =>
+      this == ItemStatus.claimed ||
+      this == ItemStatus.resolved ||
+      this == ItemStatus.closed;
 
   static ItemStatus fromFirestore(String? value) {
     return ItemStatus.values.firstWhere(
