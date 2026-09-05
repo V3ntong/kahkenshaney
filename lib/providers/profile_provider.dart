@@ -104,7 +104,10 @@ class ProfileProvider extends ChangeNotifier {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final path = 'profiles/$uid/posts/$timestamp.jpg';
       final ref = _storage.ref(path);
-      await ref.putFile(imageFile);
+      await ref.putFile(
+        imageFile,
+        SettableMetadata(customMetadata: {'metadataUploaderId': uid}),
+      );
       final imageUrl = await ref.getDownloadURL();
 
       // Save post document to Firestore
@@ -136,7 +139,10 @@ class ProfileProvider extends ChangeNotifier {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final path = 'profiles/$uid/avatar_$timestamp.jpg';
       final ref = _storage.ref(path);
-      await ref.putFile(imageFile);
+      await ref.putFile(
+        imageFile,
+        SettableMetadata(customMetadata: {'metadataUploaderId': uid}),
+      );
       final photoUrl = await ref.getDownloadURL();
 
       // Update Firestore user document

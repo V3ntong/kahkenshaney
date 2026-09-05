@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../data/firestore/notification_service.dart';
@@ -130,18 +132,39 @@ class _NotificationTile extends StatelessWidget {
     final icon = _iconForType(notification.type);
     final color = _colorForType(notification.type);
 
-    return ListTile(
+    final leadingIcon = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 20, color: color),
+    );
+
+    final tile = ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 20, color: color),
-      ),
+      leading: notification.isRead
+          ? leadingIcon
+          : Stack(
+              clipBehavior: Clip.none,
+              children: [
+                leadingIcon,
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: AppColors.error,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
+            ),
       title: Text(
         notification.title,
         maxLines: 1,
@@ -164,6 +187,23 @@ class _NotificationTile extends StatelessWidget {
               style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
             )
           : null,
+    );
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: notification.isRead ? Colors.transparent : AppColors.primarySurface.withValues(alpha: 0.3),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: notification.isRead
+            ? tile
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 1.2, sigmaY: 1.2),
+                child: tile,
+              ),
+      ),
     );
   }
 

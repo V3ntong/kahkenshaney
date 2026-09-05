@@ -7,8 +7,10 @@ import '../data/firestore/item_repository.dart';
 import '../data/firestore/notification_service.dart';
 import '../models/lost_found_item.dart';
 import '../screens/item_detail_screen.dart';
+import '../screens/settings_screen.dart';
 import '../screens/user_reports_screen.dart';
 import '../theme/app_theme.dart';
+import '../widgets/fade_slide_in.dart';
 import '../widgets/feature_card.dart';
 import '../widgets/greeting_header.dart';
 import '../widgets/item_grid_card.dart';
@@ -62,11 +64,17 @@ class _HomeFeedState extends State<HomeFeed> {
   void _listenNotifications() {
     final uid = widget.ownerUid;
     if (uid == null || uid.isEmpty) return;
-    _notifSub = NotificationService()
-        .streamUnreadCount(uid)
-        .listen((count) {
-      if (mounted) setState(() => _notificationCount = count);
-    }, onError: (_) {});
+    try {
+      _notifSub = NotificationService()
+          .streamUnreadCount(uid)
+          .listen((count) {
+        if (mounted) setState(() => _notificationCount = count);
+      }, onError: (_) {});
+    } catch (e) {
+      // Firebase not ready (e.g. during startup or in tests) — the feed
+      // still renders, just without the live badge count.
+      debugPrint('[HomeFeed] notifications unavailable: $e');
+    }
   }
 
   @override
@@ -132,6 +140,18 @@ class _HomeFeedState extends State<HomeFeed> {
                 }
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined, color: AppColors.textSecondary),
+              title: const Text('Settings'),
+              subtitle: const Text('App preferences and account'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              },
+            ),
             const Divider(height: 1, color: AppColors.border),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: AppColors.error),
@@ -185,61 +205,7 @@ class _HomeFeedState extends State<HomeFeed> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    GreetingHeader(
-                      userName: widget.userName,
-                      photoUrl: widget.photoUrl,
-                      animateReveal: widget.overlayDismissed,
-                      onNotifications: widget.onNotifications ??
-                          () => _comingSoon('Notifications'),
-                      onAvatarTap: _openAccountMenu,
-                      notificationCount: _notificationsViewed ? 0 : _notificationCount,
-                    ),
-                    const SizedBox(height: 20),
-                    HomeSearchBar(
-                      onSubmitted: (query) {
-                        if (query.trim().isNotEmpty) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BrowseItemsPage(
-                                initialSearchQuery: query.trim(),
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      onFilter: () => _comingSoon('Filters'),
-                    ),
-                    const SizedBox(height: 20),
-                    _PrimaryActions(
-                      onReportLost: _openChooseAction,
-                      onReportFound: _openChooseAction,
-                      onAiScan: widget.onAiScan ?? () => _comingSoon('AI Scan'),
-                    ),
-                    const SizedBox(height: 24),
-                    if (widget.ownerUid != null && widget.ownerUid!.isNotEmpty)
-                      _MyReportsStats(ownerUid: widget.ownerUid!),
-                    const SizedBox(height: 24),
-                    _SectionHeader(
-                      title: 'Explore',
-                      onViewAll: () => _comingSoon('More features'),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildFeatureGrid(),
-                    const SizedBox(height: 24),
-                    _RecentlyReportedSection(
-                      onViewAll: () => _goToTab(1),
-                      onItemTap: (item) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ItemDetailScreen(item: item),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                  children: _staggeredFeedChildren(),
                 ),
               ),
             ),
@@ -247,6 +213,79 @@ class _HomeFeedState extends State<HomeFeed> {
         ),
       ],
     );
+  }
+
+  /// Feed sections wrapped in a once-only fadeInDown cascade.
+  ///
+  /// The entrance fires when the feed is genuinely first built. Because the
+  /// Home tab is kept alive, the per-section [FadeSlideInWidget] states
+  /// persist, so switching tabs back or minor rebuilds never replay it — only
+  /// a real page entry (fresh route / fresh feed) animates.
+  List<Widget> _staggeredFeedChildren() {
+    final content = <Widget>[
+      GreetingHeader(
+        userName: widget.userName,
+        photoUrl: widget.photoUrl,
+        animateReveal: widget.overlayDismissed,
+        onNotifications: widget.onNotifications ??
+            () => _comingSoon('Notifications'),
+        onAvatarTap: _openAccountMenu,
+        notificationCount: _notificationsViewed ? 0 : _notificationCount,
+      ),
+      const SizedBox(height: 20),
+      HomeSearchBar(
+        onSubmitted: (query) {
+          if (query.trim().isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BrowseItemsPage(initialSearchQuery: query.trim()),
+              ),
+            );
+          }
+        },
+        onFilter: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const BrowseItemsPage()),
+          );
+        },
+      ),
+      const SizedBox(height: 20),
+      _PrimaryActions(
+        onReportLost: _openChooseAction,
+        onReportFound: _openChooseAction,
+        onAiScan: widget.onAiScan ?? () => _comingSoon('AI Scan'),
+      ),
+      const SizedBox(height: 24),
+      if (widget.ownerUid != null && widget.ownerUid!.isNotEmpty)
+        _MyReportsStats(ownerUid: widget.ownerUid!),
+      const SizedBox(height: 24),
+      _SectionHeader(
+        title: 'Explore',
+        onViewAll: () => _comingSoon('More features'),
+      ),
+      const SizedBox(height: 12),
+      _buildFeatureGrid(),
+      const SizedBox(height: 24),
+      _RecentlyReportedSection(
+        onViewAll: () => _goToTab(1),
+        onItemTap: (item) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item)),
+          );
+        },
+      ),
+    ];
+    return [
+      for (var i = 0; i < content.length; i++)
+        FadeSlideInWidget(
+          delay: FadeSlideInWidget.staggerDelay(i, perItemMs: 60),
+          duration: const Duration(milliseconds: 420),
+          child: content[i],
+        ),
+    ];
   }
 
   Widget _buildFeatureGrid() {
@@ -418,8 +457,14 @@ class _MyReportsStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Stream<List<LostFoundItem>> stream;
+    try {
+      stream = ItemRepository().streamUserItems(ownerUid);
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
     return StreamBuilder<List<LostFoundItem>>(
-      stream: ItemRepository().streamUserItems(ownerUid),
+      stream: stream,
       builder: (context, snapshot) {
         final items = snapshot.data ?? const <LostFoundItem>[];
         final approved = items.where((i) => i.moderationStatus == ModerationStatus.approved).toList();
@@ -545,11 +590,20 @@ class _RecentlyReportedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Stream<List<LostFoundItem>> lostStream;
+    final Stream<List<LostFoundItem>> foundStream;
+    try {
+      lostStream = ItemRepository().streamItems(kind: ItemKind.lost, limit: 5);
+      foundStream =
+          ItemRepository().streamItems(kind: ItemKind.found, limit: 5);
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
     return StreamBuilder<List<LostFoundItem>>(
-      stream: ItemRepository().streamItems(kind: ItemKind.lost, limit: 5),
+      stream: lostStream,
       builder: (context, lostSnap) {
         return StreamBuilder<List<LostFoundItem>>(
-          stream: ItemRepository().streamItems(kind: ItemKind.found, limit: 5),
+          stream: foundStream,
           builder: (context, foundSnap) {
             final lostItems = lostSnap.data ?? const <LostFoundItem>[];
             final foundItems = foundSnap.data ?? const <LostFoundItem>[];
@@ -575,11 +629,20 @@ class _RecentlyReportedSection extends StatelessWidget {
                     itemCount: recent.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
-                      return SizedBox(
-                        width: 150,
-                        child: ItemGridCard(
-                          item: recent[index],
-                          onTap: () => onItemTap(recent[index]),
+                      return FadeSlideInWidget(
+                        delay: FadeSlideInWidget.staggerDelay(
+                          index,
+                          perItemMs: 50,
+                          maxSpreadMs: 400,
+                        ),
+                        duration: const Duration(milliseconds: 350),
+                        offset: 20,
+                        child: SizedBox(
+                          width: 150,
+                          child: ItemGridCard(
+                            item: recent[index],
+                            onTap: () => onItemTap(recent[index]),
+                          ),
                         ),
                       );
                     },

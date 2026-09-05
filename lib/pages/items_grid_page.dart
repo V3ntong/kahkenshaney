@@ -5,6 +5,7 @@ import '../models/lost_found_item.dart';
 import '../screens/item_detail_screen.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/fade_slide_in.dart';
 import '../widgets/item_grid_card.dart';
 import 'image_gallery_page.dart';
 
@@ -51,7 +52,8 @@ class ItemsGridPage extends StatelessWidget {
         slivers: [
           // ── Banner ─────────────────────────────────────────────
           SliverToBoxAdapter(
-            child: _Banner(
+            child: FadeSlideInWidget(
+              child: _Banner(
               title: bannerTitle,
               subtitle: bannerSubtitle,
               ctaLabel: ctaLabel,
@@ -63,9 +65,10 @@ class ItemsGridPage extends StatelessWidget {
                           builder: (_) => ImageGalleryPage(initialKind: kind),
                         ),
                       ),
-              accent: accent,
-              accentSurface: accentSurface,
-              isLost: kind == ItemKind.lost,
+                accent: accent,
+                accentSurface: accentSurface,
+                isLost: kind == ItemKind.lost,
+              ),
             ),
           ),
 
@@ -115,12 +118,24 @@ class ItemsGridPage extends StatelessWidget {
                     childAspectRatio: 0.72,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (context, index) => ItemGridCard(
-                      item: items[index],
-                      onTap: () => Navigator.push(
-                        context,
-                        FadeSlideRoute(
-                          builder: (_) => ItemDetailScreen(item: items[index]),
+                    (context, index) => FadeSlideInWidget(
+                      // Cascade down the grid, clamped so the first ~12
+                      // rows (600ms spread) set the rhythm and any further
+                      // rows animate together — no long wait for item #50.
+                      delay: FadeSlideInWidget.staggerDelay(
+                        index,
+                        perItemMs: 50,
+                        maxSpreadMs: 600,
+                      ),
+                      duration: const Duration(milliseconds: 380),
+                      offset: 22,
+                      child: ItemGridCard(
+                        item: items[index],
+                        onTap: () => Navigator.push(
+                          context,
+                          FadeSlideRoute(
+                            builder: (_) => ItemDetailScreen(item: items[index]),
+                          ),
                         ),
                       ),
                     ),

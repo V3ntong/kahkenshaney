@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -49,12 +50,29 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final _chatService = ChatService();
   bool _isTyping = false;
+  bool _historyLoaded = false;
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _ensureHistoryLoaded() async {
+    if (_historyLoaded) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await _chatService.loadHistory(uid);
+    }
+    if (mounted) setState(() => _historyLoaded = true);
+  }
+
+  Future<void> _persistHistory() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && mounted) {
+      await _chatService.saveHistory(uid);
+    }
   }
 
   void _scrollToBottom() {
@@ -76,11 +94,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
     HapticFeedback.lightImpact();
 
+    await _ensureHistoryLoaded();
+
     _chatService.addUserMessage(text);
     setState(() => _isTyping = true);
     _scrollToBottom();
 
-    _chatService.sendMessage(text).then((reply) {
+    _chatService.sendMessage(text).then((reply) async {
       if (!mounted) return;
       setState(() => _isTyping = false);
 
@@ -91,13 +111,21 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {});
       }
       _scrollToBottom();
-    }).catchError((e) {
+      await _persistHistory();
+    }).catchError((e) async {
       if (!mounted) return;
       setState(() => _isTyping = false);
+      await _persistHistory();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to get response. Please try again.')),
       );
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureHistoryLoaded();
   }
 
   @override
@@ -236,13 +264,6 @@ class _ChatScreenState extends State<ChatScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                _QuickChip(
-                  label: 'How do I report a lost item?',
-                  onTap: () {
-                    _controller.text = 'How do I report a lost item?';
-                    _send();
-                  },
-                ),
                 _QuickChip(
                   label: 'What is AI Scan?',
                   onTap: () {

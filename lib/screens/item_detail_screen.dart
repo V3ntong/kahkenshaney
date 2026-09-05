@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
 import '../services/auth_service.dart' show isAdminEmail;
+import '../data/firestore/notification_service.dart';
+import '../services/claim_api.dart';
+import '../services/match_api.dart';
+import '../services/resolve_api.dart';
 import '../theme/app_theme.dart';
 import '../widgets/item_grid_card.dart';
 import 'user_chat_screen.dart';
@@ -24,25 +30,52 @@ class ItemDetailScreen extends StatefulWidget {
 
 class _ItemDetailScreenState extends State<ItemDetailScreen> {
   bool _isResolving = false;
+  bool _isClaiming = false;
+  bool _isConfirmingMatch = false;
+  StreamSubscription<LostFoundItem?>? _itemSub;
+  LostFoundItem? _liveItem;
 
-  LostFoundItem get item => widget.item;
+  /// The item as currently known. Subscribes to the Firestore document so
+  /// status changes, claims and match scores update live.
+  LostFoundItem get item => _liveItem ?? widget.item;
+
+  @override
+  void initState() {
+    super.initState();
+    _itemSub = ItemRepository().streamItem(widget.item.id).listen((live) {
+      if (!mounted || live == null) return;
+      setState(() => _liveItem = live);
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _itemSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isLost = item.kind == ItemKind.lost;
     final accent = isLost ? AppColors.error : AppColors.success;
-    final accentSurface =
-        isLost ? AppColors.errorSurface : AppColors.successSurface;
+    final accentSurface = isLost
+        ? AppColors.errorSurface
+        : AppColors.successSurface;
     final imageUrl = item.displayUrl;
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final isOwner = currentUid != null && currentUid == item.ownerUid;
     final isAdmin = isAdminEmail(FirebaseAuth.instance.currentUser?.email);
-    final canContact = currentUid != null &&
+    final canContact =
+        currentUid != null &&
         !isOwner &&
         !item.status.isTerminal &&
         item.ownerUid.isNotEmpty &&
         item.ownerUid != 'anonymous';
-    final canResolve = isAdmin && !item.status.isTerminal;
+    // Resolution is an administrative lifecycle transition. The callable
+    // enforces this again server-side; this guard keeps the control out of
+    // every regular user's UI.
+    final canResolve = !item.status.isTerminal && isAdmin;
+    final canClaim = item.canBeClaimedBy(currentUid ?? '', isAdmin: isAdmin);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -61,8 +94,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   color: Colors.black26,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_back_rounded,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
             flexibleSpace: FlexibleSpaceBar(
@@ -105,7 +141,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: accentSurface,
                           borderRadius: BorderRadius.circular(10),
@@ -134,8 +172,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         ),
                       ),
                       _StatusPill(status: item.status),
-                      if (item.category != null &&
-                          item.category!.isNotEmpty)
+                      if (item.category != null && item.category!.isNotEmpty)
                         _CategoryBadge(category: item.category!),
                     ],
                   ),
@@ -155,10 +192,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
                   // Info rows
                   if (item.location != null && item.location!.isNotEmpty)
-                    _InfoRow(
-                      icon: Icons.place_outlined,
-                      label: item.location!,
-                    ),
+                    _InfoRow(icon: Icons.place_outlined, label: item.location!),
                   if (!isLost &&
                       item.storageLocation != null &&
                       item.storageLocation!.isNotEmpty)
@@ -215,38 +249,61 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   // Additional photos
                   if (item.media.length > 1) ...[
                     const SizedBox(height: 24),
-                    const Text(
-                      'ADDITIONAL PHOTOS',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textTertiary,
-                        letterSpacing: 1.1,
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'ADDITIONAL PHOTOS',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textTertiary,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '(${item.media.length - 1})',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 90,
+                      height: 100,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: item.media.length - 1,
                         separatorBuilder: (context, index) =>
                             const SizedBox(width: 10),
                         itemBuilder: (context, index) {
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              item.media[index + 1],
-                              width: 90,
-                              height: 90,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                width: 90,
-                                height: 90,
-                                color: accentSurface,
-                                child: Icon(Icons.broken_image_rounded,
+                          final photoUrl = item.media[index + 1];
+                          return GestureDetector(
+                            onTap: () => _openPhotoViewer(
+                              context,
+                              item.media,
+                              index + 1,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                photoUrl,
+                                width: 100,
+                                height: 100,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  width: 100,
+                                  height: 100,
+                                  color: accentSurface,
+                                  child: Icon(
+                                    Icons.broken_image_rounded,
                                     size: 28,
-                                    color: accent.withValues(alpha: 0.5)),
+                                    color: accent.withValues(alpha: 0.5),
+                                  ),
+                                ),
                               ),
                             ),
                           );
@@ -255,9 +312,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ],
 
-                  // AI Match section (conditional)
-                  _AiMatchSection(
+                  // Suggested Matches (stored scores or category fallback)
+                  _SuggestedMatchesSection(
                     item: item,
+                    canConfirmMatch:
+                        !item.status.isTerminal &&
+                        (isAdmin ||
+                            (currentUid != null &&
+                                (currentUid == item.ownerUid ||
+                                    (item.reportedBy.isNotEmpty &&
+                                        currentUid == item.reportedBy)))),
+                    onConfirmMatch: _confirmMatch,
                     onItemTap: (matchedItem) {
                       Navigator.pushReplacement(
                         context,
@@ -268,6 +333,44 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     },
                   ),
 
+                  // Claim This Item button (non-owners)
+                  if (canClaim) ...[
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _isClaiming ? null : () => _claimItem(),
+                        icon: _isClaiming
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.how_to_reg_rounded, size: 18),
+                        label: Text(
+                          _isClaiming
+                              ? 'Submitting claim...'
+                              : 'Claim This Item',
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
                   // Contact Reporter button (non-owners)
                   if (canContact) ...[
                     const SizedBox(height: 28),
@@ -275,8 +378,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: () => _contactReporter(context),
-                        icon: const Icon(Icons.chat_bubble_outline_rounded,
-                            size: 18),
+                        icon: const Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 18,
+                        ),
                         label: const Text('Contact Reporter'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.primary,
@@ -300,8 +405,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed:
-                            _isResolving ? null : () => _markAsResolved(),
+                        onPressed: _isResolving
+                            ? null
+                            : () => _markAsResolved(),
                         icon: _isResolving
                             ? const SizedBox(
                                 width: 18,
@@ -311,10 +417,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Icon(Icons.check_circle_outline_rounded,
-                                size: 18),
+                            : const Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 18,
+                              ),
                         label: Text(
-                            _isResolving ? 'Resolving...' : 'Mark as Resolved'),
+                          _isResolving ? 'Resolving...' : 'Mark as Resolved',
+                        ),
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.success,
                           foregroundColor: Colors.white,
@@ -347,6 +456,22 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     );
   }
 
+  /// Opens a full-screen photo viewer for the given media list.
+  void _openPhotoViewer(
+    BuildContext context,
+    List<String> media,
+    int initialIndex,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _FullScreenPhotoViewer(
+          media: media,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
   void _contactReporter(BuildContext context) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     if (currentUid == null) return;
@@ -364,28 +489,114 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     );
   }
 
+  Future<void> _claimItem() async {
+    if (_isClaiming) return;
+
+    if (item.ownerUid == FirebaseAuth.instance.currentUser?.uid) {
+      if (!mounted) return;
+      setState(() => _isClaiming = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You cannot claim your own item')),
+      );
+      return;
+    }
+
+    setState(() => _isClaiming = true);
+
+    try {
+      await ClaimApi().claimItem(item.id);
+      if (!mounted) return;
+      setState(() => _isClaiming = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Claim submitted for review')),
+      );
+
+      // Notify the item reporter
+      final notifService = NotificationService();
+      await notifService.createNotification(
+        userId: item.ownerUid,
+        title: 'Claim Submitted',
+        body: 'A claim has been submitted for your ${item.kind.name} item "${item.title}".',
+        type: 'status_pendingClaim',
+        relatedItemId: item.id,
+      );
+
+      // Notify admin
+      await notifService.notifyAdminNewReport(item: item);
+    } on ClaimApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isClaiming = false);
+      // Surface the server's message (e.g. self-claim rejection).
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isClaiming = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to submit claim')));
+    }
+  }
+
+  /// Confirms [match] as the linked counterpart of this item via the
+  /// server-side `confirmMatch` callable (updates `matchedItemId` + status
+  /// on BOTH documents).
+  Future<void> _confirmMatch(ItemMatchScore match) async {
+    if (_isConfirmingMatch) return;
+    setState(() => _isConfirmingMatch = true);
+    try {
+      await MatchApi().confirmMatch(
+        itemId: item.id,
+        matchedItemId: match.itemId,
+      );
+      if (!mounted) return;
+      setState(() => _isConfirmingMatch = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Match confirmed')));
+    } on MatchApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isConfirmingMatch = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isConfirmingMatch = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to confirm match')));
+    }
+  }
+
   Future<void> _markAsResolved() async {
     if (_isResolving) return;
     setState(() => _isResolving = true);
 
     try {
-      await ItemRepository().updateItemFields(item.id, {
-        'status': 'claimed',
-        'updatedAt': DateTime.now().toIso8601String(),
-      });
+      // Server-side lifecycle: validates the caller, writes the terminal
+      // status + resolvedAt/resolvedBy + history, and notifies the other
+      // party. The live item stream refreshes the UI afterwards.
+      await ResolveApi().resolveItem(item.id);
       if (mounted) {
         setState(() => _isResolving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Item marked as resolved')),
         );
       }
+    } on ResolveApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isResolving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
-      if (mounted) {
-        setState(() => _isResolving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to resolve item')),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _isResolving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to resolve item')));
     }
   }
 }
@@ -418,24 +629,90 @@ class _CategoryBadge extends StatelessWidget {
   }
 }
 
-// ─── AI Match Section ─────────────────────────────────────────────────────
+// ─── Suggested Matches Section ────────────────────────────────────────────
 
-class _AiMatchSection extends StatelessWidget {
-  const _AiMatchSection({
+/// Shows smart-match candidates ranked by score.
+///
+/// Prefers the server-computed [LostFoundItem.matchScores] (stored on the
+/// item document by the matching Cloud Function) so scores are never
+/// recomputed on page load. Falls back to the category-based live query for
+/// items created before the matcher existed.
+class _SuggestedMatchesSection extends StatelessWidget {
+  const _SuggestedMatchesSection({
     required this.item,
     required this.onItemTap,
+    this.canConfirmMatch = false,
+    this.onConfirmMatch,
   });
 
   final LostFoundItem item;
   final ValueChanged<LostFoundItem> onItemTap;
 
+  /// Whether the viewer (reporter/admin) may link a suggested match.
+  final bool canConfirmMatch;
+  final ValueChanged<ItemMatchScore>? onConfirmMatch;
+
   @override
   Widget build(BuildContext context) {
-    // Only show for items with a category
+    final stored = item.matchScores;
+    if (stored.isNotEmpty) {
+      final ranked = [...stored]..sort((a, b) => b.score.compareTo(a.score));
+      return _buildRankedList(context, ranked.take(5).toList());
+    }
+    return _buildFallback(context);
+  }
+
+  /// Ranked list from persisted match scores.
+  Widget _buildRankedList(BuildContext context, List<ItemMatchScore> matches) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text(
+          'SUGGESTED MATCHES',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textTertiary,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...matches.map(
+          (match) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _MatchCard(
+              score: match.score,
+              title: match.title,
+              kind: match.kind,
+              onTap: () => _openMatch(context, match.itemId),
+              onConfirm: canConfirmMatch && onConfirmMatch != null
+                  ? () => onConfirmMatch!(match)
+                  : null,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Opens the matched item's detail page (fetched by ID).
+  Future<void> _openMatch(BuildContext context, String itemId) async {
+    try {
+      final matched = await ItemRepository().getItem(itemId);
+      if (matched != null && context.mounted) {
+        onItemTap(matched);
+      }
+    } catch (e) {
+      debugPrint('[ItemDetail] Error opening suggested match: $e');
+    }
+  }
+
+  /// Category-based live fallback (pre-matcher behavior).
+  Widget _buildFallback(BuildContext context) {
     if (item.category == null || item.category!.isEmpty) {
       return const SizedBox.shrink();
     }
-
     return StreamBuilder<List<LostFoundItem>>(
       stream: ItemRepository().streamPotentialMatches(
         currentItemId: item.id,
@@ -446,11 +723,8 @@ class _AiMatchSection extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox.shrink();
         }
-
         final matches = snapshot.data ?? const <LostFoundItem>[];
         if (matches.isEmpty) return const SizedBox.shrink();
-
-        // Show the best match (first item, newest)
         final bestMatch = matches.first;
         final matchCount = matches.length;
 
@@ -468,105 +742,144 @@ class _AiMatchSection extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            GestureDetector(
+            _MatchCard(
+              score: null,
+              title: bestMatch.title,
+              kind: bestMatch.kind,
+              subtitle: matchCount > 1
+                  ? '+${matchCount - 1} more match${matchCount > 2 ? 'es' : ''}'
+                  : null,
               onTap: () => onItemTap(bestMatch),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.primarySurface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  children: [
-                    // Thumbnail
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: bestMatch.displayUrl != null
-                          ? Image.network(
-                              bestMatch.displayUrl!,
-                              width: 56,
-                              height: 56,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                width: 56,
-                                height: 56,
-                                color: AppColors.surface,
-                                child: Icon(
-                                  bestMatch.kind == ItemKind.lost
-                                      ? Icons.fmd_bad_rounded
-                                      : Icons.inventory_2_rounded,
-                                  size: 24,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              width: 56,
-                              height: 56,
-                              color: AppColors.surface,
-                              child: Icon(
-                                bestMatch.kind == ItemKind.lost
-                                    ? Icons.fmd_bad_rounded
-                                    : Icons.inventory_2_rounded,
-                                size: 24,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(width: 14),
-                    // Info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            bestMatch.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            bestMatch.kind == ItemKind.lost
-                                ? 'Reported lost'
-                                : 'Found item',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          if (matchCount > 1) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              '+${matchCount - 1} more match${matchCount > 2 ? 'es' : ''}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // View button
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 16,
-                      color: AppColors.primary,
-                    ),
-                  ],
-                ),
-              ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// A single suggested-match row with a confidence score.
+class _MatchCard extends StatelessWidget {
+  const _MatchCard({
+    required this.title,
+    required this.kind,
+    required this.onTap,
+    this.score,
+    this.subtitle,
+    this.onConfirm,
+  });
+
+  final int? score;
+  final String title;
+  final ItemKind kind;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  /// When set, shows a compact "confirm/link" action on the card.
+  final VoidCallback? onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.primarySurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                kind == ItemKind.lost
+                    ? Icons.fmd_bad_rounded
+                    : Icons.inventory_2_rounded,
+                size: 22,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle ??
+                        (kind == ItemKind.lost
+                            ? 'Reported lost'
+                            : 'Found item'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (score != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: score! >= 70
+                      ? AppColors.successSurface
+                      : AppColors.warningSurface,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$score% match',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: score! >= 70 ? AppColors.success : AppColors.warning,
+                  ),
+                ),
+              ),
+            ],
+            if (onConfirm != null) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: onConfirm,
+                tooltip: 'Confirm this match',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.link_rounded,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+              ),
+            ] else ...[
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: AppColors.primary,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -597,12 +910,18 @@ class _RelatedItemsSection extends StatelessWidget {
         final allItems = snapshot.data ?? const <LostFoundItem>[];
 
         // Score-based related items matching
-        final scored = allItems
-            .where((i) => i.id != currentItemId && !i.status.isTerminal)
-            .map((i) => (item: i, score: _relatedScore(i, category!, currentItem)))
-            .where((e) => e.score > 0)
-            .toList()
-          ..sort((a, b) => b.score.compareTo(a.score));
+        final scored =
+            allItems
+                .where((i) => i.id != currentItemId && !i.status.isTerminal)
+                .map(
+                  (i) => (
+                    item: i,
+                    score: _relatedScore(i, category!, currentItem),
+                  ),
+                )
+                .where((e) => e.score > 0)
+                .toList()
+              ..sort((a, b) => b.score.compareTo(a.score));
 
         final related = scored.take(4).map((e) => e.item).toList();
 
@@ -622,7 +941,7 @@ class _RelatedItemsSection extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             SizedBox(
-              height: 180,
+              height: 260,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: related.length,
@@ -723,18 +1042,41 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (status) {
       ItemStatus.open => ('OPEN', AppColors.success, AppColors.successSurface),
-      ItemStatus.pendingVerification =>
-        ('PENDING', AppColors.warning, AppColors.warningSurface),
-      ItemStatus.verified =>
-        ('VERIFIED', AppColors.info, AppColors.infoSurface),
-      ItemStatus.matched =>
-        ('MATCHED', AppColors.primary, AppColors.infoSurface),
-      ItemStatus.claimed =>
-        ('CLAIMED', AppColors.success, AppColors.successSurface),
-      ItemStatus.resolved =>
-        ('RESOLVED', AppColors.accent, AppColors.successSurface),
-      ItemStatus.closed =>
-        ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
+      ItemStatus.pendingVerification => (
+        'PENDING',
+        AppColors.warning,
+        AppColors.warningSurface,
+      ),
+      ItemStatus.verified => (
+        'VERIFIED',
+        AppColors.info,
+        AppColors.infoSurface,
+      ),
+      ItemStatus.matched => (
+        'MATCHED',
+        AppColors.primary,
+        AppColors.infoSurface,
+      ),
+      ItemStatus.pendingClaim => (
+        'CLAIM PENDING',
+        AppColors.warning,
+        AppColors.warningSurface,
+      ),
+      ItemStatus.claimed => (
+        'CLAIMED',
+        AppColors.success,
+        AppColors.successSurface,
+      ),
+      ItemStatus.resolved => (
+        'RESOLVED',
+        AppColors.accent,
+        AppColors.successSurface,
+      ),
+      ItemStatus.closed => (
+        'CLOSED',
+        AppColors.textTertiary,
+        AppColors.surfaceVariant,
+      ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -759,7 +1101,11 @@ class _StatusPill extends StatelessWidget {
 
 /// Scores how related another item is to the current one.
 /// Higher score = more relevant. Returns 0 if not related at all.
-int _relatedScore(LostFoundItem other, String currentCategory, LostFoundItem current) {
+int _relatedScore(
+  LostFoundItem other,
+  String currentCategory,
+  LostFoundItem current,
+) {
   int score = 0;
 
   // Same category = strong match
@@ -768,7 +1114,9 @@ int _relatedScore(LostFoundItem other, String currentCategory, LostFoundItem cur
   // Similar title keywords = moderate match
   final currentWords = current.title.toLowerCase().split(RegExp(r'\s+'));
   final otherWords = other.title.toLowerCase().split(RegExp(r'\s+'));
-  final sharedWords = currentWords.where((w) => w.length > 2 && otherWords.contains(w)).length;
+  final sharedWords = currentWords
+      .where((w) => w.length > 2 && otherWords.contains(w))
+      .length;
   score += sharedWords * 3;
 
   // Same location = slight match
@@ -785,12 +1133,101 @@ int _relatedScore(LostFoundItem other, String currentCategory, LostFoundItem cur
 
 String _formatDate(DateTime date) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   final h = date.hour;
   final m = date.minute.toString().padLeft(2, '0');
   final period = h >= 12 ? 'PM' : 'AM';
   final hour12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
   return '${months[date.month - 1]} ${date.day}, ${date.year} at $hour12:$m $period';
+}
+
+// ─── Full-Screen Photo Viewer ─────────────────────────────────────────────
+
+class _FullScreenPhotoViewer extends StatefulWidget {
+  const _FullScreenPhotoViewer({
+    required this.media,
+    required this.initialIndex,
+  });
+
+  final List<String> media;
+  final int initialIndex;
+
+  @override
+  State<_FullScreenPhotoViewer> createState() => _FullScreenPhotoViewerState();
+}
+
+class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(
+          '${_currentIndex + 1} / ${widget.media.length}',
+          style: const TextStyle(fontSize: 16),
+        ),
+        centerTitle: true,
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.media.length,
+        onPageChanged: (index) => setState(() => _currentIndex = index),
+        itemBuilder: (context, index) {
+          return InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Center(
+              child: Image.network(
+                widget.media[index],
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  );
+                },
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Icon(
+                    Icons.broken_image_rounded,
+                    size: 48,
+                    color: Colors.white54,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

@@ -161,7 +161,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AdminDashboardScreen), findsNothing);
-      expect(find.text('Welcome Back'), findsOneWidget);
+      expect(find.byType(LoginScreen), findsOneWidget);
     });
 
     testWidgets('non-admin users are redirected away from the Admin Dashboard',
@@ -177,7 +177,7 @@ void main() {
 
       expect(find.byType(AdminDashboardScreen), findsNothing);
       expect(find.byType(DashboardScreen), findsNothing);
-      expect(find.text('Welcome Back'), findsOneWidget);
+      expect(find.byType(LoginScreen), findsOneWidget);
     });
   });
 }

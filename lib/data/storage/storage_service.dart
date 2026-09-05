@@ -24,20 +24,23 @@ class StorageService {
 
   /// Uploads the given photos and returns their download URLs + Storage paths.
   ///
-  /// Images are stored under `lost_and_found/{type}/{fileName}.jpg` where
+  /// Images are stored under [itemFolderRoot]/`{fileName}.jpg` where
   /// `{fileName}` is a timestamp-based unique name to avoid collisions.
+  /// [userId] is recorded as custom `metadataUploaderId` metadata so the
+  /// Storage delete rule can authorize the uploader.
   Future<List<UploadResult>> uploadItemPhotos({
     required String folder,
     required String itemId,
     required List<File> images,
+    String? userId,
   }) async {
     final results = <UploadResult>[];
     for (var i = 0; i < images.length; i++) {
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = '${itemId}_${stamp}_$i.jpg';
-      final path = 'lost_and_found/$folder/$fileName';
+      final path = '${itemFolderRoot(folder)}/$fileName';
       final ref = _storage.ref(path);
-      await ref.putFile(images[i]);
+      await ref.putFile(images[i], _uploadMetadata(userId));
       final url = await ref.getDownloadURL();
       results.add(UploadResult(url: url, path: path));
     }
@@ -59,12 +62,25 @@ class StorageService {
   }
 
   /// Fetches the download URLs of every image under [folderName]
-  /// (`lost` or `found`). Traverses any nested subfolders (e.g. item-id
-  /// folders) so both flat and grouped layouts are supported.
+  /// (`lost` or `found`). Uploads live under [itemFolderRoot], so the root
+  /// reference includes the `lost_and_found/` prefix — reading the bare
+  /// folder name would point at a path where nothing is ever written.
+  /// Traverses nested subfolders so both flat and grouped layouts work.
   Future<List<String>> fetchImagesFromFolder(String folderName) async {
     final urls = <String>[];
-    await _collectImages(_storage.ref(folderName), urls);
+    await _collectImages(_storage.ref(itemFolderRoot(folderName)), urls);
     return urls;
+  }
+
+  /// The storage root for item photos: `lost_and_found/{folder}`.
+  /// Shared by upload and gallery reads so they can never drift apart.
+  static String itemFolderRoot(String folder) => 'lost_and_found/$folder';
+
+  SettableMetadata _uploadMetadata(String? userId) {
+    if (userId == null || userId.isEmpty) return SettableMetadata();
+    return SettableMetadata(
+      customMetadata: {'metadataUploaderId': userId},
+    );
   }
 
   Future<void> _collectImages(Reference ref, List<String> urls) async {

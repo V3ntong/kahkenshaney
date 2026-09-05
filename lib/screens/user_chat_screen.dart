@@ -134,7 +134,12 @@ class _UserChatScreenState extends State<UserChatScreen> {
       final chatPrefix = _isPeerChat ? 'peer' : 'chat';
       final fileName = '${chatPrefix}_${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = FirebaseStorage.instance.ref('chat_images/$fileName');
-      await ref.putFile(file);
+      await ref.putFile(
+        file,
+        SettableMetadata(
+          customMetadata: {'metadataUploaderId': widget.userId},
+        ),
+      );
       final url = await ref.getDownloadURL();
       if (!mounted) return;
       _sendMessage(imageUrl: url);

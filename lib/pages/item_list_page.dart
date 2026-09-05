@@ -408,6 +408,8 @@ class _StatusPill extends StatelessWidget {
       ItemStatus.pendingVerification => ('PENDING', AppColors.warning, AppColors.warningSurface),
       ItemStatus.verified => ('VERIFIED', AppColors.info, AppColors.infoSurface),
       ItemStatus.matched => ('MATCHED', AppColors.primary, AppColors.infoSurface),
+      ItemStatus.pendingClaim =>
+        ('CLAIM PENDING', AppColors.warning, AppColors.warningSurface),
       ItemStatus.claimed => ('CLAIMED', AppColors.success, AppColors.successSurface),
       ItemStatus.closed => ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
       ItemStatus.resolved => ('RESOLVED', AppColors.success, AppColors.successSurface),

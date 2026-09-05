@@ -19,9 +19,14 @@ class AppTextField extends StatefulWidget {
     this.onChanged,
     this.textCapitalization = TextCapitalization.none,
     this.enabled = true,
+    this.focusNode,
   });
 
   final TextEditingController controller;
+
+  /// Optional external [FocusNode] (e.g. to focus the password field after
+  /// selecting a saved account). When null an internal one is managed here.
+  final FocusNode? focusNode;
   final String? label;
   final String? hintText;
   final IconData? prefixIcon;
@@ -41,7 +46,7 @@ class AppTextField extends StatefulWidget {
 }
 
 class _AppTextFieldState extends State<AppTextField> {
-  final FocusNode _focusNode = FocusNode();
+  late final FocusNode _focusNode;
   bool _focused = false;
   bool _obscured = false;
 
@@ -49,13 +54,17 @@ class _AppTextFieldState extends State<AppTextField> {
   void initState() {
     super.initState();
     _obscured = widget.obscureText;
+    _focusNode = widget.focusNode ?? FocusNode();
     _focusNode.addListener(_onFocusChange);
   }
 
   @override
   void dispose() {
     _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    // Only dispose nodes we created; external owners dispose their own.
+    if (widget.focusNode == null) {
+      _focusNode.dispose();
+    }
     super.dispose();
   }
 

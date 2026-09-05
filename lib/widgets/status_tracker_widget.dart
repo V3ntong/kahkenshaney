@@ -4,7 +4,8 @@ import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
 
 /// A horizontal stepper UI showing the item status pipeline:
-/// Submitted → Pending Verification → Verified → Matched → Claimed → Archived
+/// Submitted → Pending Verification → Verified → Matched → Pending Claim →
+/// Claimed → Resolved → Archived
 ///
 /// Highlights the current step and greys out future ones.
 class StatusTrackerWidget extends StatelessWidget {
@@ -24,7 +25,9 @@ class StatusTrackerWidget extends StatelessWidget {
     ItemStatus.pendingVerification,
     ItemStatus.verified,
     ItemStatus.matched,
+    ItemStatus.pendingClaim,
     ItemStatus.claimed,
+    ItemStatus.resolved,
     ItemStatus.closed,
   ];
 
@@ -33,7 +36,9 @@ class StatusTrackerWidget extends StatelessWidget {
     Icons.pending_actions_rounded,
     Icons.verified_rounded,
     Icons.swap_horiz_rounded,
+    Icons.how_to_reg_rounded,
     Icons.check_circle_outline_rounded,
+    Icons.task_alt_rounded,
     Icons.archive_rounded,
   ];
 
@@ -211,6 +216,7 @@ class StatusTrackerWidget extends StatelessWidget {
         ItemStatus.pendingVerification => AppColors.warning,
         ItemStatus.verified => AppColors.success,
         ItemStatus.matched => AppColors.primary,
+        ItemStatus.pendingClaim => AppColors.warning,
         ItemStatus.claimed => AppColors.success,
         ItemStatus.closed => AppColors.textTertiary,
         ItemStatus.resolved => AppColors.success,

@@ -13,10 +13,7 @@ class MainPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: false,
-        title: const AppLogo(size: 32),
-      ),
+      appBar: AppBar(centerTitle: false, title: const AppLogo(size: 32)),
       body: Column(
         children: [
           Expanded(
@@ -31,16 +28,13 @@ class MainPage extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Hero(
-                        tag: 'app-logo',
-                        child: AppLogo(size: 80),
-                      ),
+                      const Hero(tag: 'app-logo', child: AppLogo(size: 80)),
                       const SizedBox(height: 32),
 
                       // Headline with blur-to-focus animation (Bebas Neue)
                       BlurRevealText(
                         text: 'KAH KEN SHA NEY',
-                        duration: const Duration(milliseconds: 1200),
+                        duration: const Duration(milliseconds: 1700),
                         maxBlur: 14,
                         slideOffset: 24,
                         style: GoogleFonts.bebasNeue(
@@ -57,7 +51,7 @@ class MainPage extends StatelessWidget {
                             "We find what your memory can't. For people who lose "
                             'things more often than they change their socks.',
                         textAlign: TextAlign.center,
-                        speed: const Duration(milliseconds: 5),
+                        speed: kTypewriterSpeedSlow,
                         delay: const Duration(milliseconds: 300),
                         showCursor: false,
                         style: GoogleFonts.lobsterTwo(
@@ -99,8 +93,9 @@ class MainPage extends StatelessWidget {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             elevation: 2,
-                            shadowColor:
-                                AppColors.primary.withValues(alpha: 0.3),
+                            shadowColor: AppColors.primary.withValues(
+                              alpha: 0.3,
+                            ),
                           ),
                         ),
                       ),
@@ -128,17 +123,15 @@ class _Footer extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.divider, width: 1),
-        ),
+        border: Border(top: BorderSide(color: AppColors.divider, width: 1)),
       ),
       child: Text(
         '\u00a9 ${DateTime.now().year} KAH KEN SHA NEY. All rights reserved.',
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppColors.textTertiary,
-              fontSize: 12,
-            ),
+          color: AppColors.textTertiary,
+          fontSize: 12,
+        ),
       ),
     );
   }

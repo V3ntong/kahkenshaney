@@ -11,6 +11,18 @@ class AppColors {
   static const Color primaryLight = Color(0xFF60A5FA);
   static const Color primarySurface = Color(0xFFEFF6FF);
 
+  // Floating navigation â€” deliberately part of the blue brand family rather
+  // than a neutral black/orange treatment.
+  static const Color navigationSurface = Color(0xFF0F2747);
+  static const Color navigationActive = Color(0xFF3B82F6);
+  static const Color navigationInactive = Color(0xFF9CB4D0);
+  static const Color navigationBorder = Color(0x337DB4FF);
+
+  // Reusable frosted surfaces for overlays on photography.
+  static const Color glassLightTint = Color(0xCCFFFFFF);
+  static const Color glassDarkTint = Color(0xCC0F2747);
+  static const Color glassBorder = Color(0x99FFFFFF);
+
   // ── Secondary / Accent ─────────────────────────────────
   static const Color secondary = Color(0xFF3B82F6);
   static const Color accent = Color(0xFF22C55E);
@@ -62,11 +74,7 @@ class AppColors {
 
   // ── Soft shadow (blur 20, opacity 8%, y offset 6) ─────
   static const List<BoxShadow> softShadow = [
-    BoxShadow(
-      color: Color(0x14256EB3),
-      blurRadius: 20,
-      offset: Offset(0, 6),
-    ),
+    BoxShadow(color: Color(0x14256EB3), blurRadius: 20, offset: Offset(0, 6)),
   ];
 }
 
@@ -108,10 +116,7 @@ ThemeData buildAppTheme() {
       fillColor: AppColors.surface,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
-      hintStyle: TextStyle(
-        color: AppColors.textTertiary,
-        fontSize: 14,
-      ),
+      hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 14),
       prefixIconColor: AppColors.textTertiary,
       suffixIconColor: AppColors.textTertiary,
       enabledBorder: OutlineInputBorder(
@@ -136,10 +141,7 @@ ThemeData buildAppTheme() {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.primary,
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
-        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
       ),
     ),
 
@@ -150,13 +152,8 @@ ThemeData buildAppTheme() {
         foregroundColor: Colors.white,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
     ),
 

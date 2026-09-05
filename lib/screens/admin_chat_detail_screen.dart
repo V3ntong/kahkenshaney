@@ -136,7 +136,12 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
       final file = File(picked.path);
       final fileName = 'chat_${widget.chatId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = FirebaseStorage.instance.ref('chat_images/$fileName');
-      await ref.putFile(file);
+      await ref.putFile(
+        file,
+        SettableMetadata(
+          customMetadata: {'metadataUploaderId': widget.adminUid},
+        ),
+      );
       final url = await ref.getDownloadURL();
       if (!mounted) return;
       _sendMessage(imageUrl: url);

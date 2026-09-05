@@ -9,13 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../data/firestore/admin_repository.dart';
-import '../data/firestore/database_service.dart';
 import '../mainpage.dart';
 import '../models/lost_found_item.dart';
+import '../services/admin_api.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/fade_slide_in.dart';
 import '../widgets/image_picker_sheet.dart';
 import 'admin_inbox_screen.dart';
 import 'admin_resolved_screen.dart';
@@ -91,19 +92,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
-  /// Writes `isAdmin: true` to the admin's user document so the Firestore
-  /// `isAdmin()` helper passes, enabling chat read/write access.
+  /// Asks the server to set `isAdmin: true` on this user's document when
+  /// their verified email matches the designated admin email. Admin role
+  /// assignment happens server-side only — never from the client.
   Future<void> _initProfile() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
     try {
-      await DatabaseService().ensureAdminProfile(
-        uid: user.uid,
-        email: user.email ?? '',
-        displayName: user.displayName,
-      );
+      await AdminApi().grantAdminIfAuthorized();
     } catch (e) {
-      debugPrint('[AdminDashboard] _ensureAdminProfile error: $e');
+      debugPrint('[AdminDashboard] grantAdminIfAuthorized error: $e');
     }
   }
 
@@ -219,7 +215,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               title: const Text('Admin Dashboard'),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.notifications_none_rounded),
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.notifications_none_rounded),
+                      if (_adminUnreadCount > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: AppColors.error,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   onPressed: () => _showNotice('Notifications'),
                 ),
                 Padding(
@@ -262,6 +276,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           usersStream: _usersStream,
           repositoryAvailable: _repository != null,
           onNotice: _showNotice,
+          unreadCount: _adminUnreadCount,
         );
       case 1:
         return AdminReviewQueueScreen(adminUid: _auth.currentUser?.uid ?? '');
@@ -534,6 +549,7 @@ class _DashboardOverview extends StatelessWidget {
     required this.usersStream,
     required this.repositoryAvailable,
     required this.onNotice,
+    this.unreadCount = 0,
   });
 
   final String adminName;
@@ -541,6 +557,7 @@ class _DashboardOverview extends StatelessWidget {
   final Stream<int>? usersStream;
   final bool repositoryAvailable;
   final ValueChanged<String> onNotice;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -562,6 +579,7 @@ class _DashboardOverview extends StatelessWidget {
               _Header(
                 adminName: adminName,
                 onNotice: onNotice,
+                unreadCount: unreadCount,
               ),
               const SizedBox(height: 20),
               if (!repositoryAvailable)
@@ -591,81 +609,108 @@ class _DashboardOverview extends StatelessWidget {
                               spacing: 16,
                               runSpacing: 16,
                               children: [
-                                _StatCard(
-                                  width: statCardWidth,
-                                  label: 'Lost Items',
-                                  value: data.lost,
-                                  icon: Icons.fmd_bad_rounded,
-                                  color: AppColors.error,
-                                  tint: AppColors.errorSurface,
-                                  caption: 'total lost reports',
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(0, perItemMs: 80),
+                                  child: _StatCard(
+                                    width: statCardWidth,
+                                    label: 'Lost Items',
+                                    value: data.lost,
+                                    icon: Icons.fmd_bad_rounded,
+                                    color: AppColors.error,
+                                    tint: AppColors.errorSurface,
+                                    caption: 'total lost reports',
+                                  ),
                                 ),
-                                _StatCard(
-                                  width: statCardWidth,
-                                  label: 'Found Items',
-                                  value: data.found,
-                                  icon: Icons.inventory_2_rounded,
-                                  color: AppColors.success,
-                                  tint: AppColors.successSurface,
-                                  caption: 'total found reports',
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(1, perItemMs: 80),
+                                  child: _StatCard(
+                                    width: statCardWidth,
+                                    label: 'Found Items',
+                                    value: data.found,
+                                    icon: Icons.inventory_2_rounded,
+                                    color: AppColors.success,
+                                    tint: AppColors.successSurface,
+                                    caption: 'total found reports',
+                                  ),
                                 ),
-                                _StatCard(
-                                  width: statCardWidth,
-                                  label: 'Users',
-                                  value: userCount,
-                                  icon: Icons.people_alt_rounded,
-                                  color: AppColors.primary,
-                                  tint: AppColors.primarySurface,
-                                  caption: 'registered accounts',
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(2, perItemMs: 80),
+                                  child: _StatCard(
+                                    width: statCardWidth,
+                                    label: 'Users',
+                                    value: userCount,
+                                    icon: Icons.people_alt_rounded,
+                                    color: AppColors.primary,
+                                    tint: AppColors.primarySurface,
+                                    caption: 'registered accounts',
+                                  ),
                                 ),
-                                _StatCard(
-                                  width: statCardWidth,
-                                  label: 'Pending Reports',
-                                  value: data.pending,
-                                  icon: Icons.pending_actions_rounded,
-                                  color: AppColors.warning,
-                                  tint: AppColors.warningSurface,
-                                  caption: 'awaiting review',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                _ChartCard(
-                                  width: chartCardWidth,
-                                  title: 'Reports Overview',
-                                  child: _TrendChart(data: data),
-                                ),
-                                _ChartCard(
-                                  width: chartCardWidth,
-                                  title: 'Reports by Category',
-                                  child: _CategoryDonut(
-                                    slices: data.categories,
-                                    total: data.total,
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(3, perItemMs: 80),
+                                  child: _StatCard(
+                                    width: statCardWidth,
+                                    label: 'Pending Reports',
+                                    value: data.pending,
+                                    icon: Icons.pending_actions_rounded,
+                                    color: AppColors.warning,
+                                    tint: AppColors.warningSurface,
+                                    caption: 'awaiting review',
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 20),
-                            _RecentReportsCard(
-                              items: data.recent,
-                              onNotice: onNotice,
+                            Wrap(
+                              spacing: 16,
+                              runSpacing: 16,
+                              children: [
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(4, perItemMs: 80),
+                                  child: _ChartCard(
+                                    width: chartCardWidth,
+                                    title: 'Reports Overview',
+                                    child: _TrendChart(data: data),
+                                  ),
+                                ),
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(5, perItemMs: 80),
+                                  child: _ChartCard(
+                                    width: chartCardWidth,
+                                    title: 'Reports by Category',
+                                    child: _CategoryDonut(
+                                      slices: data.categories,
+                                      total: data.total,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(6, perItemMs: 80),
+                              child: _RecentReportsCard(
+                                items: data.recent,
+                                onNotice: onNotice,
+                              ),
                             ),
                             const SizedBox(height: 20),
                             Wrap(
                               spacing: 16,
                               runSpacing: 16,
                               children: [
-                                SizedBox(
-                                  width: chartCardWidth,
-                                  child: const _AdminActionsCard(),
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(7, perItemMs: 80),
+                                  child: SizedBox(
+                                    width: chartCardWidth,
+                                    child: const _AdminActionsCard(),
+                                  ),
                                 ),
-                                SizedBox(
-                                  width: chartCardWidth,
-                                  child: const _TechStackCard(),
+                                FadeSlideInWidget(
+                                  delay: FadeSlideInWidget.staggerDelay(8, perItemMs: 80),
+                                  child: SizedBox(
+                                    width: chartCardWidth,
+                                    child: const _TechStackCard(),
+                                  ),
                                 ),
                               ],
                             ),
@@ -684,10 +729,11 @@ class _DashboardOverview extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.adminName, required this.onNotice});
+  const _Header({required this.adminName, required this.onNotice, this.unreadCount = 0});
 
   final String adminName;
   final ValueChanged<String> onNotice;
+  final int unreadCount;
 
   String get _today {
     final now = DateTime.now();
@@ -765,10 +811,33 @@ class _Header extends StatelessWidget {
                 child: Ink(
                   width: 40,
                   height: 40,
-                  child: const Icon(
-                    Icons.notifications_none_rounded,
-                    size: 20,
-                    color: AppColors.textSecondary,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Positioned.fill(
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.notifications_none_rounded,
+                            size: 20,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: AppColors.error,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -1765,6 +1834,8 @@ String _statusLabel(ItemStatus status) {
       return 'Verified';
     case ItemStatus.matched:
       return 'Matched';
+    case ItemStatus.pendingClaim:
+      return 'Pending Claim';
     case ItemStatus.claimed:
       return 'Claimed';
     case ItemStatus.resolved:
@@ -1823,6 +1894,12 @@ class _StatusBadge extends StatelessWidget {
           label: 'Matched',
           color: AppColors.primary,
           tint: AppColors.infoSurface,
+        );
+      case ItemStatus.pendingClaim:
+        return const _Badge(
+          label: 'Pending Claim',
+          color: AppColors.warning,
+          tint: AppColors.warningSurface,
         );
       case ItemStatus.claimed:
         return const _Badge(
@@ -2160,139 +2237,140 @@ class _UsersSection extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Admin Management Card
-              _AdminManagementCard(adminRepository: adminRepository),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Registered Users',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
-                        color: AppColors.textPrimary,
+        return FadeSlideInWidget(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _AdminManagementCard(adminRepository: adminRepository),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Registered Users',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.cardBorder),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.people_alt_rounded, size: 15, color: AppColors.textSecondary),
-                        SizedBox(width: 6),
-                        Text(
-                          'All users',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              StreamBuilder<List<Map<String, dynamic>>>(
-                stream: usersStream,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(40),
-                        child: CircularProgressIndicator(color: AppColors.primary),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.cardBorder),
                       ),
-                    );
-                  }
-
-                  if (snapshot.hasError) {
-                    return _EmptyPanel(
-                      icon: Icons.cloud_off_rounded,
-                      title: 'Could not load users',
-                      message: snapshot.error.toString(),
-                    );
-                  }
-
-                  final users = snapshot.data ?? const [];
-
-                  if (users.isEmpty) {
-                    return const _EmptyPanel(
-                      icon: Icons.people_outline_rounded,
-                      title: 'No users yet',
-                      message: 'Registered users will appear here.',
-                    );
-                  }
-
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.cardBorder),
-                      boxShadow: AppColors.softShadow,
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: const BoxDecoration(
-                            border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.people_alt_rounded, size: 15, color: AppColors.textSecondary),
+                          SizedBox(width: 6),
+                          Text(
+                            'All users',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 44),
-                              const Expanded(
-                                flex: 3,
-                                child: Text(
-                                  'User',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.textTertiary,
-                                    letterSpacing: 0.4,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 4,
-                                child: Text(
-                                  'Email',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.textTertiary,
-                                    letterSpacing: 0.4,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 60),
-                            ],
-                          ),
-                        ),
-                        for (var i = 0; i < users.length; i++) ...[
-                          _UserRow(user: users[i]),
-                          if (i != users.length - 1)
-                            const Divider(height: 1, indent: 72, color: AppColors.border),
                         ],
-                      ],
+                      ),
                     ),
-                  );
-                },
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: usersStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(40),
+                          child: CircularProgressIndicator(color: AppColors.primary),
+                        ),
+                      );
+                    }
+
+                    if (snapshot.hasError) {
+                      return _EmptyPanel(
+                        icon: Icons.cloud_off_rounded,
+                        title: 'Could not load users',
+                        message: snapshot.error.toString(),
+                      );
+                    }
+
+                    final users = snapshot.data ?? const [];
+
+                    if (users.isEmpty) {
+                      return const _EmptyPanel(
+                        icon: Icons.people_outline_rounded,
+                        title: 'No users yet',
+                        message: 'Registered users will appear here.',
+                      );
+                    }
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.cardBorder),
+                        boxShadow: AppColors.softShadow,
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: const BoxDecoration(
+                              border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+                            ),
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 44),
+                                const Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    'User',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textTertiary,
+                                      letterSpacing: 0.4,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 4,
+                                  child: Text(
+                                    'Email',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textTertiary,
+                                      letterSpacing: 0.4,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 60),
+                              ],
+                            ),
+                          ),
+                          for (var i = 0; i < users.length; i++) ...[
+                            _UserRow(user: users[i]),
+                            if (i != users.length - 1)
+                              const Divider(height: 1, indent: 72, color: AppColors.border),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -2710,7 +2788,12 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
     try {
       final ref = FirebaseStorage.instance
           .ref('profiles/${widget.adminUid}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await ref.putFile(file);
+      await ref.putFile(
+        file,
+        SettableMetadata(
+          customMetadata: {'metadataUploaderId': widget.adminUid},
+        ),
+      );
       final url = await ref.getDownloadURL();
       await FirebaseFirestore.instance
           .collection('users')
@@ -2728,22 +2811,23 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Admin Profile',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              color: AppColors.textPrimary,
+    return FadeSlideInWidget(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Admin Profile',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Container(
+            const SizedBox(height: 20),
+            Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: AppColors.surface,
@@ -2932,6 +3016,7 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -2973,55 +3058,57 @@ class _SettingsSectionState extends State<_SettingsSection> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(20),
+    return FadeSlideInWidget(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySurface,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.settings_rounded, size: 32, color: AppColors.primary),
               ),
-              child: const Icon(Icons.settings_rounded, size: 32, color: AppColors.primary),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Settings',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: 280,
-              child: ElevatedButton.icon(
-                onPressed: _migrating ? null : _runMigration,
-                icon: _migrating
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync_rounded),
-                label: Text(_migrating ? 'Migrating...' : 'Run Moderation Migration'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              const SizedBox(height: 20),
+              const Text(
+                'Settings',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tap once to add moderationStatus to all existing items.\nThis is safe to run multiple times.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-          ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 280,
+                child: ElevatedButton.icon(
+                  onPressed: _migrating ? null : _runMigration,
+                  icon: _migrating
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync_rounded),
+                  label: Text(_migrating ? 'Migrating...' : 'Run Moderation Migration'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Tap once to add moderationStatus to all existing items.\nThis is safe to run multiple times.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
         ),
       ),
     );

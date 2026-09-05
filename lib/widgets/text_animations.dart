@@ -6,6 +6,15 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_theme.dart';
 
+// ─── Typewriter Speed Constants ─────────────────────────────────────────────
+
+/// Default typing speed (ms/char) for short phrases and taglines.
+const Duration kTypewriterSpeedDefault = Duration(milliseconds: 35);
+
+/// Slightly slower speed for full sentences so they don't finish too abruptly
+/// to visually track.
+const Duration kTypewriterSpeedSlow = Duration(milliseconds: 40);
+
 // ─── Typewriter Text (Layout-Stable) ───────────────────────────────────────
 
 /// Reveals text one character at a time with a blinking cursor.
@@ -16,7 +25,7 @@ class TypewriterText extends StatefulWidget {
     required this.text,
     this.style,
     this.textAlign,
-    this.speed = const Duration(milliseconds: 40),
+    this.speed = kTypewriterSpeedDefault,
     this.delay = Duration.zero,
     this.showCursor = true,
     this.cursorColor,
@@ -39,6 +48,7 @@ class TypewriterText extends StatefulWidget {
 class _TypewriterTextState extends State<TypewriterText>
     with SingleTickerProviderStateMixin {
   late final AnimationController _cursorCtrl;
+  Timer? _delayTimer;
   Timer? _typeTimer;
   int _charCount = 0;
 
@@ -48,13 +58,20 @@ class _TypewriterTextState extends State<TypewriterText>
     _cursorCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-    )..repeat(reverse: true);
+    );
+    // Only blink the cursor when it is actually shown — otherwise this
+    // controller would tick forever and keep widget tests from settling.
+    if (widget.showCursor) {
+      _cursorCtrl.repeat(reverse: true);
+    }
 
     _startTyping();
   }
 
   void _startTyping() {
-    Future.delayed(widget.delay, () {
+    // A cancellable Timer (not Future.delayed) so the delay is cleaned up in
+    // dispose() and never leaks past the widget's lifetime.
+    _delayTimer = Timer(widget.delay, () {
       if (!mounted) return;
       _typeTimer = Timer.periodic(widget.speed, (timer) {
         if (_charCount >= widget.text.length) {
@@ -69,6 +86,7 @@ class _TypewriterTextState extends State<TypewriterText>
 
   @override
   void dispose() {
+    _delayTimer?.cancel();
     _typeTimer?.cancel();
     _cursorCtrl.dispose();
     super.dispose();
@@ -105,10 +123,11 @@ class _TypewriterTextState extends State<TypewriterText>
                     TextSpan(
                       text: '|',
                       style: TextStyle(
-                        color: (widget.cursorColor ??
-                                widget.style?.color ??
-                                AppColors.primary)
-                            .withValues(alpha: _cursorCtrl.value),
+                        color:
+                            (widget.cursorColor ??
+                                    widget.style?.color ??
+                                    AppColors.primary)
+                                .withValues(alpha: _cursorCtrl.value),
                         fontWeight: FontWeight.w300,
                       ),
                     ),
@@ -134,7 +153,7 @@ class BlurRevealText extends StatefulWidget {
     this.textAlign,
     this.maxBlur = 12.0,
     this.slideOffset = 20.0,
-    this.duration = const Duration(milliseconds: 900),
+    this.duration = const Duration(milliseconds: 1400),
     this.delay = Duration.zero,
   });
 
@@ -156,14 +175,16 @@ class _BlurRevealTextState extends State<BlurRevealText>
   late final Animation<double> _blurAnim;
   late final Animation<double> _opacityAnim;
   late final Animation<Offset> _slideAnim;
+  Timer? _delayTimer;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(vsync: this, duration: widget.duration);
-    _blurAnim = Tween<double>(begin: widget.maxBlur, end: 0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
-    );
+    _blurAnim = Tween<double>(
+      begin: widget.maxBlur,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _opacityAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _ctrl,
@@ -173,16 +194,16 @@ class _BlurRevealTextState extends State<BlurRevealText>
     _slideAnim = Tween<Offset>(
       begin: Offset(0, widget.slideOffset / 100),
       end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
-    );
-    Future.delayed(widget.delay, () {
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    // Cancellable Timer so the entrance delay never leaks past dispose().
+    _delayTimer = Timer(widget.delay, () {
       if (mounted) _ctrl.forward();
     });
   }
 
   @override
   void dispose() {
+    _delayTimer?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -201,7 +222,11 @@ class _BlurRevealTextState extends State<BlurRevealText>
             position: _slideAnim,
             child: Opacity(
               opacity: _opacityAnim.value,
-              child: Text(widget.text, textAlign: widget.textAlign, style: widget.style),
+              child: Text(
+                widget.text,
+                textAlign: widget.textAlign,
+                style: widget.style,
+              ),
             ),
           ),
         );
@@ -236,7 +261,8 @@ class AnimatedAuthHeader extends StatefulWidget {
 class _AnimatedAuthHeaderState extends State<AnimatedAuthHeader> {
   @override
   Widget build(BuildContext context) {
-    final titleStyle = widget.titleStyle ??
+    final titleStyle =
+        widget.titleStyle ??
         GoogleFonts.bebasNeue(
           fontSize: 32,
           fontWeight: FontWeight.w400,
@@ -244,7 +270,8 @@ class _AnimatedAuthHeaderState extends State<AnimatedAuthHeader> {
           letterSpacing: 1.2,
         );
 
-    final resolvedSubtitleStyle = widget.subtitleStyle ??
+    final resolvedSubtitleStyle =
+        widget.subtitleStyle ??
         GoogleFonts.lobsterTwo(
           fontSize: 15,
           color: AppColors.textSecondary,
@@ -259,7 +286,7 @@ class _AnimatedAuthHeaderState extends State<AnimatedAuthHeader> {
           textAlign: TextAlign.center,
           style: titleStyle,
           delay: const Duration(milliseconds: 200),
-          duration: const Duration(milliseconds: 800),
+          duration: const Duration(milliseconds: 1300),
         ),
         if (widget.subtitle != null) ...[
           const SizedBox(height: 10),
@@ -268,7 +295,7 @@ class _AnimatedAuthHeaderState extends State<AnimatedAuthHeader> {
             textAlign: TextAlign.center,
             style: resolvedSubtitleStyle,
             delay: const Duration(milliseconds: 100),
-            speed: const Duration(milliseconds: 2),
+            speed: kTypewriterSpeedDefault,
             showCursor: false,
             onComplete: () {},
           ),

@@ -25,6 +25,18 @@ class ItemRepository {
     return LostFoundItem.fromMap(doc.id, doc.data()!);
   }
 
+  /// Live stream of a single item document — status changes, claims and
+  /// match scores update in real time without a page refresh.
+  Stream<LostFoundItem?> streamItem(String id) {
+    return _items.doc(id).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return LostFoundItem.fromMap(doc.id, doc.data()!);
+    }).handleError((error) {
+      debugPrint('[ItemRepository] streamItem error: $error');
+      return const Stream.empty();
+    });
+  }
+
   /// Public stream — only approved items, filtered by kind.
   ///
   /// Falls back to all items if the composite index is not yet deployed.

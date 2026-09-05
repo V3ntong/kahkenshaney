@@ -125,6 +125,10 @@ void main() {
     expect(submitted, isNotNull);
     expect(submitted!.kind, ItemKind.lost);
     expect(submitted!.title, 'Black Tumbler');
+    // The reporter UID is recorded at creation time for the self-claim guard.
+    expect(submitted!.reportedBy, isNotEmpty);
+    // The picked date is persisted as eventDate (used by smart matching).
+    expect(submitted!.eventDate, isNotNull);
   });
 
   testWidgets('Found form submits a valid item to the injected handler',
@@ -166,5 +170,9 @@ void main() {
     expect(submitted!.kind, ItemKind.found);
     expect(submitted!.location, 'Main Gate');
     expect(submitted!.storageLocation, 'Lost & Found Office');
+    // The reporter UID is recorded at creation time for the self-claim guard.
+    expect(submitted!.reportedBy, isNotEmpty);
+    // The picked date is persisted as eventDate (used by smart matching).
+    expect(submitted!.eventDate, isNotNull);
   });
 }

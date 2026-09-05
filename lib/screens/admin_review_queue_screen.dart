@@ -4,6 +4,7 @@ import '../data/firestore/item_repository.dart';
 import '../data/firestore/notification_service.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import '../widgets/action_progress_bar.dart';
 import '../widgets/status_tracker_widget.dart';
 
 const _monthAbbr = [
@@ -30,6 +31,7 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
   late final ItemRepository _repo;
   late final NotificationService _notifService;
   List<LostFoundItem>? _localItems;
+  final _actionController = ActionController();
 
   @override
   void initState() {
@@ -38,26 +40,35 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
     _notifService = NotificationService();
   }
 
+  @override
+  void dispose() {
+    _actionController.dispose();
+    super.dispose();
+  }
+
   Future<void> _updateModeration(
       LostFoundItem item, ModerationStatus status, {String? reason}) async {
-    // Instantly remove from local list for immediate UI feedback
     if (_localItems != null) {
       setState(() {
         _localItems = _localItems!..removeWhere((i) => i.id == item.id);
       });
     }
+    _actionController.setInProgress();
     final updates = <String, dynamic>{
       'moderationStatus': status.firestoreValue,
     };
     if (reason != null && reason.isNotEmpty) {
       updates['rejectionReason'] = reason;
     }
-    await _repo.updateItemFields(item.id, updates);
-    await _notifService.notifyModerationChange(item: item, newStatus: status);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Item ${status.name}')),
-    );
+    try {
+      await _repo.updateItemFields(item.id, updates);
+      await _notifService.notifyModerationChange(item: item, newStatus: status);
+      if (!mounted) return;
+      _actionController.setSuccess(message: 'Item ${status.name}');
+    } catch (e) {
+      if (!mounted) return;
+      _actionController.setError('Failed: ${e.toString()}');
+    }
   }
 
   Future<void> _updateItemStatus(
@@ -71,25 +82,28 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
       'changedBy': widget.adminUid,
     });
 
-    // Mark as Resolved removes from pending queue instantly
     if (newStatus == ItemStatus.resolved && _localItems != null) {
       setState(() {
         _localItems = _localItems!..removeWhere((i) => i.id == item.id);
       });
     }
 
+    _actionController.setInProgress();
     final updates = <String, dynamic>{
       'status': newStatus.firestoreValue,
       'statusHistory': history,
     };
     if (matchedItemId != null) updates['matchedItemId'] = matchedItemId;
 
-    await _repo.updateItemFields(item.id, updates);
-    await _notifService.notifyStatusChange(item: item, newStatus: newStatus);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Status updated to ${newStatus.label}')),
-    );
+    try {
+      await _repo.updateItemFields(item.id, updates);
+      await _notifService.notifyStatusChange(item: item, newStatus: newStatus);
+      if (!mounted) return;
+      _actionController.setSuccess(message: 'Status updated to ${newStatus.label}');
+    } catch (e) {
+      if (!mounted) return;
+      _actionController.setError('Failed: ${e.toString()}');
+    }
   }
 
   void _showItemDetail(LostFoundItem item) {
@@ -170,98 +184,112 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: StreamBuilder<List<LostFoundItem>>(
-        stream: _repo.streamPendingItems(),
-        builder: (context, snapshot) {
-          // Sync local list from stream (stream is the source of truth for adds)
-          if (snapshot.hasData && _localItems == null) {
-            _localItems = snapshot.data;
-          } else if (snapshot.hasData && snapshot.data!.length != _localItems!.length) {
-            // Stream has new data (e.g. new items added) — merge
-            final streamIds = snapshot.data!.map((i) => i.id).toSet();
-            final localIds = _localItems!.map((i) => i.id).toSet();
-            // Add any new items from stream that aren't in local list
-            final newFromStream = snapshot.data!
-                .where((i) => !localIds.contains(i.id))
-                .toList();
-            if (newFromStream.isNotEmpty) {
-              _localItems = [...newFromStream, ..._localItems!];
-            }
-            // Remove any items from local that no longer exist in stream
-            _localItems = _localItems!
-                .where((i) => streamIds.contains(i.id))
-                .toList();
-          }
+      body: Stack(
+        children: [
+          StreamBuilder<List<LostFoundItem>>(
+            stream: _repo.streamPendingItems(),
+            builder: (context, snapshot) {
+              if (snapshot.hasData && _localItems == null) {
+                _localItems = snapshot.data;
+              } else if (snapshot.hasData && snapshot.data!.length != _localItems!.length) {
+                final streamIds = snapshot.data!.map((i) => i.id).toSet();
+                final localIds = _localItems!.map((i) => i.id).toSet();
+                final newFromStream = snapshot.data!
+                    .where((i) => !localIds.contains(i.id))
+                    .toList();
+                if (newFromStream.isNotEmpty) {
+                  _localItems = [...newFromStream, ..._localItems!];
+                }
+                _localItems = _localItems!
+                    .where((i) => streamIds.contains(i.id))
+                    .toList();
+              }
 
-          if (snapshot.connectionState == ConnectionState.waiting && _localItems == null) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
-          }
+              if (snapshot.connectionState == ConnectionState.waiting && _localItems == null) {
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                );
+              }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_rounded, size: 44, color: AppColors.error),
-                  const SizedBox(height: 16),
-                  Text(
-                    snapshot.error.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off_rounded, size: 44, color: AppColors.error),
+                      const SizedBox(height: 16),
+                      Text(
+                        snapshot.error.toString(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
+                );
+              }
 
-          final items = _localItems ?? snapshot.data ?? const <LostFoundItem>[];
+              final items = _localItems ?? snapshot.data ?? const <LostFoundItem>[];
 
-          if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: const BoxDecoration(
-                      color: AppColors.successSurface,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.check_circle_rounded, size: 36, color: AppColors.success),
+              if (items.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: const BoxDecoration(
+                          color: AppColors.successSurface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check_circle_rounded, size: 36, color: AppColors.success),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'All caught up!',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No pending items to review.',
+                        style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'All caught up!',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'No pending items to review.',
-                    style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            );
-          }
+                );
+              }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return _ReviewCard(
-                item: item,
-                onTap: () => _showItemDetail(item),
-                onApprove: () => _updateModeration(item, ModerationStatus.approved),
-                onReject: () => _showRejectDialog(item),
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return _ReviewCard(
+                    item: item,
+                    onTap: () => _showItemDetail(item),
+                    onApprove: () => _updateModeration(item, ModerationStatus.approved),
+                    onReject: () => _showRejectDialog(item),
+                  );
+                },
               );
             },
-          );
-        },
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ListenableBuilder(
+              listenable: _actionController,
+              builder: (context, _) => ActionProgressBar(
+                state: _actionController.state,
+                progress: _actionController.progress,
+                errorMessage: _actionController.errorMessage,
+                onDismiss: _actionController.dismiss,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -559,6 +587,8 @@ class _ItemDetailSheet extends StatelessWidget {
                     _StatusButton(label: 'Matched', color: AppColors.primary, onTap: () => onStatusChange(ItemStatus.matched)),
                   if (item.status == ItemStatus.matched)
                     _StatusButton(label: 'Claimed', color: AppColors.success, onTap: () => onStatusChange(ItemStatus.claimed)),
+                  if (item.status == ItemStatus.pendingClaim)
+                    _StatusButton(label: 'Confirm Claim', color: AppColors.success, onTap: () => onStatusChange(ItemStatus.claimed)),
                   if (item.status == ItemStatus.claimed)
                     _StatusButton(label: 'Resolved', color: AppColors.accent, onTap: () => onStatusChange(ItemStatus.resolved)),
                   if (item.status == ItemStatus.resolved)

@@ -4,12 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../data/firestore/notification_service.dart' as firestore_notif;
 import '../pages/home_page.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/chatbot.dart';
+import '../widgets/notification_banner.dart';
 import '../widgets/text_animations.dart';
 import 'auth/change_password_screen.dart';
 import 'auth/login.dart';
@@ -34,6 +36,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _overlayDismissed = false;
   int _currentTab = 0;
   int _unreadCount = 0;
+  int _notificationCount = 0;
 
   @override
   void initState() {
@@ -46,6 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
       _guardRoute();
       _listenUnread();
+      _listenNotificationCount();
       _initNotifications();
     });
   }
@@ -54,10 +58,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   void dispose() {
     _welcomeFade.dispose();
     _unreadSub?.cancel();
+    _notifSub?.cancel();
     super.dispose();
   }
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _unreadSub;
+  StreamSubscription<int>? _notifSub;
 
   void _listenUnread() {
     final uid = _auth.currentUser?.uid;
@@ -78,6 +84,19 @@ class _DashboardScreenState extends State<DashboardScreen>
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
     NotificationService().initialize(userId: uid);
+  }
+
+  /// Live unread in-app notification count (match suggestions, claims,
+  /// moderation results) shown as a badge on the Home tab.
+  void _listenNotificationCount() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    _notifSub = firestore_notif.NotificationService()
+        .streamUnreadCount(uid)
+        .listen((count) {
+      if (!mounted) return;
+      setState(() => _notificationCount = count);
+    }, onError: (_) {});
   }
 
   void _dismissWelcome() {
@@ -141,22 +160,26 @@ class _DashboardScreenState extends State<DashboardScreen>
     final email = user.email ?? '';
     final photoUrl = user.photoURL;
 
-    return Stack(
-      children: [
-        HomePage(
-          userName: displayName,
-          userEmail: email,
-          photoUrl: photoUrl,
-          ownerUid: _auth.currentUser?.uid,
-          onChangePassword: _goToChangePassword,
-          onSignOut: _signOut,
-          onTabChanged: (index) => setState(() => _currentTab = index),
-          unreadCount: _unreadCount,
-          overlayDismissed: _overlayDismissed,
-        ),
-        if (_currentTab != 4) const ChatbotButton(),
-        if (_welcomeVisible) _buildWelcomeOverlay(displayName),
-      ],
+    return NotificationBannerHost(
+      userId: _auth.currentUser?.uid,
+      child: Stack(
+        children: [
+          HomePage(
+            userName: displayName,
+            userEmail: email,
+            photoUrl: photoUrl,
+            ownerUid: _auth.currentUser?.uid,
+            onChangePassword: _goToChangePassword,
+            onSignOut: _signOut,
+            onTabChanged: (index) => setState(() => _currentTab = index),
+            unreadCount: _unreadCount,
+            notificationCount: _notificationCount,
+            overlayDismissed: _overlayDismissed,
+          ),
+          if (_currentTab != 4) const ChatbotButton(),
+          if (_welcomeVisible) _buildWelcomeOverlay(displayName),
+        ],
+      ),
     );
   }
 

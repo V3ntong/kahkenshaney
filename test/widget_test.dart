@@ -20,16 +20,18 @@ void main() {
     );
   });
 
-  testWidgets('Get Started navigates to the Login screen', (tester) async {
+  testWidgets('Get Started opens the Register screen', (tester) async {
     await tester.pumpWidget(const AmongApp(firebaseReady: true));
 
     await tester.tap(find.text('Get Started'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome Back'), findsOneWidget);
+    // Get Started routes to the sign-up flow.
+    expect(find.text('Full Name'), findsOneWidget);
     expect(find.text('Email Address'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
-    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Confirm Password'), findsOneWidget);
+    expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
   });
 
   testWidgets('Login shows validation errors for empty fields', (tester) async {
@@ -171,7 +173,8 @@ void main() {
       const MaterialApp(home: LoginScreen()),
     );
 
-    expect(find.text('Welcome Back'), findsOneWidget);
+    // The animated auth header renders the title uppercased.
+    expect(find.text('WELCOME BACK'), findsOneWidget);
     expect(find.text('Email Address'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('Forgot Password?'), findsOneWidget);
@@ -204,7 +207,7 @@ void main() {
     );
 
     expect(find.text('Enter your full name'), findsOneWidget);
-    expect(find.text('Enter your email'), findsOneWidget);
+    expect(find.text('surname.name@smctagum.edu.ph'), findsOneWidget);
     expect(find.text('you@example.com'), findsNothing);
     expect(find.text('Jane Doe'), findsNothing);
 
@@ -223,7 +226,8 @@ void main() {
     await tester.tap(find.text('Forgot Password?'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Forgot Password'), findsOneWidget);
+    // The animated auth header renders the title uppercased.
+    expect(find.text('FORGOT PASSWORD'), findsOneWidget);
     expect(find.text('Send Verification Code'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -5,6 +5,12 @@ import 'package:flutter/foundation.dart';
 class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
+  /// The most recent push notification received while the app was in the
+  /// foreground. Widgets (e.g. [NotificationBannerHost]) listen to this to
+  /// surface the message as an in-app banner. Static so any instance can
+  /// publish and any widget can subscribe without sharing state manually.
+  static final ValueNotifier<RemoteMessage?> lastForegroundMessage =
+      ValueNotifier<RemoteMessage?>(null);
   /// Initializes notification permissions, saves FCM token to Firestore,
   /// and sets up message listeners.
   ///
@@ -42,6 +48,8 @@ class NotificationService {
         '[NotificationService] Foreground message: '
         '${message.notification?.title} - ${message.notification?.body}',
       );
+      // Surface the message to the UI so an in-app banner can be shown.
+      lastForegroundMessage.value = message;
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {

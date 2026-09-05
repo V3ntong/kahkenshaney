@@ -330,6 +330,8 @@ class _ResolvedCard extends StatelessWidget {
         return AppColors.success;
       case ItemStatus.matched:
         return AppColors.primary;
+      case ItemStatus.pendingClaim:
+        return AppColors.warning;
       case ItemStatus.claimed:
         return AppColors.success;
       case ItemStatus.resolved:

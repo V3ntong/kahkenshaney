@@ -172,6 +172,10 @@ class NotificationService {
           'Match Found!',
           'A potential match has been found for your ${item.kind.name} item "${item.title}".',
         ),
+      ItemStatus.pendingClaim => (
+          'Claim Submitted',
+          'A claim was submitted for your ${item.kind.name} item "${item.title}" and is pending review.',
+        ),
       ItemStatus.claimed => (
           'Item Claimed',
           'Your ${item.kind.name} item "${item.title}" has been claimed.',

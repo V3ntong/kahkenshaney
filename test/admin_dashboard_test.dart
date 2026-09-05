@@ -229,6 +229,11 @@ void main() {
     await tester.tap(logout);
     await tester.pumpAndSettle();
 
+    // A confirmation dialog is shown before signing out.
+    expect(find.text('Log out'), findsOneWidget);
+    await tester.tap(find.text('Log Out'));
+    await tester.pumpAndSettle();
+
     expect(find.text('KAH KEN SHA NEY'), findsWidgets);
   });
 }

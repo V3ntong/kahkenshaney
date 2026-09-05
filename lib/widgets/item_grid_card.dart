@@ -2,17 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import 'glass_panel.dart';
 
 /// Reusable grid card for displaying a lost or found item.
 ///
 /// Shows the item image (or a placeholder), name, description, and location.
 /// Used in both the Lost and Found 2-column grid layouts.
 class ItemGridCard extends StatelessWidget {
-  const ItemGridCard({
-    super.key,
-    required this.item,
-    this.onTap,
-  });
+  const ItemGridCard({super.key, required this.item, this.onTap});
 
   final LostFoundItem item;
   final VoidCallback? onTap;
@@ -21,13 +18,15 @@ class ItemGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLost = item.kind == ItemKind.lost;
     final accent = isLost ? AppColors.error : AppColors.success;
-    final accentSurface = isLost ? AppColors.errorSurface : AppColors.successSurface;
+    final accentSurface = isLost
+        ? AppColors.errorSurface
+        : AppColors.successSurface;
 
     final location = item.location?.isNotEmpty == true
         ? item.location!
         : item.storageLocation?.isNotEmpty == true
-            ? item.storageLocation!
-            : '';
+        ? item.storageLocation!
+        : '';
 
     return GestureDetector(
       onTap: onTap,
@@ -43,104 +42,127 @@ class ItemGridCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Image ──────────────────────────────────────────
-            AspectRatio(
-              aspectRatio: 1,
-              child: item.media.isNotEmpty
-                  ? Image.network(
-                      item.media.first,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) return child;
-                        return Container(
-                          color: accentSurface,
-                          alignment: Alignment.center,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary,
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  item.media.isNotEmpty
+                      ? Image.network(
+                          item.media.first,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, progress) {
+                            if (progress == null) return child;
+                            return Container(
+                              color: accentSurface,
+                              alignment: Alignment.center,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.primary,
+                              ),
+                            );
+                          },
+                          errorBuilder: (_, _, _) => _Placeholder(
+                            accent: accent,
+                            surface: accentSurface,
+                            isLost: isLost,
                           ),
-                        );
-                      },
-                      errorBuilder: (_, _, _) => _Placeholder(
-                        accent: accent,
-                        surface: accentSurface,
-                        isLost: isLost,
+                        )
+                      : _Placeholder(
+                          accent: accent,
+                          surface: accentSurface,
+                          isLost: isLost,
+                        ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: GlassPanel(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          item.category ??
+                              (isLost ? 'Lost item' : 'Found item'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                       ),
-                    )
-                  : _Placeholder(
-                      accent: accent,
-                      surface: accentSurface,
-                      isLost: isLost,
                     ),
+                  ),
+                ],
+              ),
             ),
 
             // ── Details ────────────────────────────────────────
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Item name
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Item name
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+
+                  // Description (truncated)
+                  if (item.description.isNotEmpty) ...[
+                    const SizedBox(height: 3),
                     Text(
-                      item.title,
-                      maxLines: 1,
+                      item.description,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        height: 1.3,
                       ),
                     ),
+                  ],
 
-                    // Description (truncated)
-                    if (item.description.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Flexible(
+                  const SizedBox(height: 6),
+
+                  // Location + time
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.place_outlined,
+                        size: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 3),
+                      Expanded(
                         child: Text(
-                          item.description,
-                          maxLines: 2,
+                          location.isNotEmpty ? location : 'No location',
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                            height: 1.3,
+                            fontSize: 11,
+                            color: AppColors.textTertiary,
                           ),
                         ),
                       ),
                     ],
+                  ),
 
-                    const SizedBox(height: 6),
+                  const SizedBox(height: 4),
 
-                    // Location + time
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.place_outlined,
-                          size: 12,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            location.isNotEmpty ? location : 'No location',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const Spacer(),
-
-                    // Status pill
-                    _StatusPill(status: item.status),
-                  ],
-                ),
+                  // Status pill
+                  _StatusPill(status: item.status),
+                ],
               ),
             ),
           ],
@@ -185,12 +207,41 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (status) {
       ItemStatus.open => ('OPEN', AppColors.success, AppColors.successSurface),
-      ItemStatus.pendingVerification => ('PENDING', AppColors.warning, AppColors.warningSurface),
-      ItemStatus.verified => ('VERIFIED', AppColors.info, AppColors.infoSurface),
-      ItemStatus.matched => ('MATCHED', AppColors.primary, AppColors.infoSurface),
-      ItemStatus.claimed => ('CLAIMED', AppColors.success, AppColors.successSurface),
-      ItemStatus.closed => ('CLOSED', AppColors.textTertiary, AppColors.surfaceVariant),
-      ItemStatus.resolved => ('RESOLVED', AppColors.success, AppColors.successSurface),
+      ItemStatus.pendingVerification => (
+        'PENDING',
+        AppColors.warning,
+        AppColors.warningSurface,
+      ),
+      ItemStatus.verified => (
+        'VERIFIED',
+        AppColors.info,
+        AppColors.infoSurface,
+      ),
+      ItemStatus.matched => (
+        'MATCHED',
+        AppColors.primary,
+        AppColors.infoSurface,
+      ),
+      ItemStatus.pendingClaim => (
+        'CLAIM PENDING',
+        AppColors.warning,
+        AppColors.warningSurface,
+      ),
+      ItemStatus.claimed => (
+        'CLAIMED',
+        AppColors.success,
+        AppColors.successSurface,
+      ),
+      ItemStatus.closed => (
+        'CLOSED',
+        AppColors.textTertiary,
+        AppColors.surfaceVariant,
+      ),
+      ItemStatus.resolved => (
+        'RESOLVED',
+        AppColors.success,
+        AppColors.successSurface,
+      ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

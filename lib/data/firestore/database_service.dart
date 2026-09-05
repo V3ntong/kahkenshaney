@@ -1,8 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../services/auth_service.dart' show kAdminEmail;
-
 /// Firestore data service for the Lost & Found app.
 ///
 /// Provides CRUD operations for items and user profiles.
@@ -109,71 +107,24 @@ class DatabaseService {
   /// Create or overwrite a user profile in the `users` collection.
   ///
   /// Uses [SetOptions(merge: true)] so existing fields are not overwritten.
-  /// Automatically sets `isAdmin: true` for the designated admin email or
-  /// emails in the adminEmails collection.
+  /// Privileged fields (`isAdmin`, `role`) are NEVER written from the client:
+  /// Firestore rules reject them on create/update, and admin assignment only
+  /// happens server-side via the `grantAdminIfAuthorized` Cloud Function.
   Future<void> createUserProfile({
     required String uid,
     required String email,
     String? displayName,
-    String role = 'user',
   }) async {
     try {
-      // Check if this email is the admin email or in the adminEmails collection.
-      var isAdmin = email.trim().toLowerCase() ==
-          kAdminEmail.toLowerCase();
-      if (!isAdmin) {
-        final adminEmailsSnapshot = await _db
-            .collection('adminEmails')
-            .where('email', isEqualTo: email.trim().toLowerCase())
-            .limit(1)
-            .get();
-        isAdmin = adminEmailsSnapshot.docs.isNotEmpty;
-      }
-
       await _db.collection('users').doc(uid).set({
         'email': email,
         'displayName': displayName ?? '',
-        'role': role,
-        'isAdmin': isAdmin,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } on FirebaseException catch (e) {
       debugPrint('[DatabaseService] createUserProfile error: ${e.code}');
       throw DatabaseException('Failed to create profile.');
-    }
-  }
-
-  /// Ensures the admin user document has `isAdmin: true`.
-  ///
-  /// Called on admin dashboard load so the Firestore `isAdmin()` helper
-  /// function passes, allowing the admin to read/write chat documents.
-  Future<void> ensureAdminProfile({
-    required String uid,
-    required String email,
-    String? displayName,
-  }) async {
-    try {
-      var isAdmin = email.trim().toLowerCase() ==
-          kAdminEmail.toLowerCase();
-      if (!isAdmin) {
-        final adminEmailsSnapshot = await _db
-            .collection('adminEmails')
-            .where('email', isEqualTo: email.trim().toLowerCase())
-            .limit(1)
-            .get();
-        isAdmin = adminEmailsSnapshot.docs.isNotEmpty;
-      }
-      if (!isAdmin) return;
-
-      await _db.collection('users').doc(uid).set({
-        'email': email,
-        'displayName': displayName ?? '',
-        'isAdmin': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } on FirebaseException catch (e) {
-      debugPrint('[DatabaseService] ensureAdminProfile error: ${e.code}');
     }
   }
 

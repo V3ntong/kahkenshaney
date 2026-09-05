@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import '../widgets/fade_slide_in.dart';
 import '../widgets/item_grid_card.dart';
 
 /// Reports tab — shows all approved lost & found items in a grid.
@@ -22,28 +23,30 @@ class _ReportsPageState extends State<ReportsPage> {
     return Column(
       children: [
         // ── Filter chips ──────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Row(
-            children: [
-              _FilterChip(
-                label: 'All',
-                selected: _filter == 'all',
-                onTap: () => setState(() => _filter = 'all'),
-              ),
-              const SizedBox(width: 8),
-              _FilterChip(
-                label: 'Lost',
-                selected: _filter == 'lost',
-                onTap: () => setState(() => _filter = 'lost'),
-              ),
-              const SizedBox(width: 8),
-              _FilterChip(
-                label: 'Found',
-                selected: _filter == 'found',
-                onTap: () => setState(() => _filter = 'found'),
-              ),
-            ],
+        FadeSlideInWidget(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: 'All',
+                  selected: _filter == 'all',
+                  onTap: () => setState(() => _filter = 'all'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Lost',
+                  selected: _filter == 'lost',
+                  onTap: () => setState(() => _filter = 'lost'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Found',
+                  selected: _filter == 'found',
+                  onTap: () => setState(() => _filter = 'found'),
+                ),
+              ],
+            ),
           ),
         ),
 
@@ -139,7 +142,16 @@ class _ReportsPageState extends State<ReportsPage> {
                 itemCount: items.length,
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  return ItemGridCard(item: item);
+                  return FadeSlideInWidget(
+                    delay: FadeSlideInWidget.staggerDelay(
+                      index,
+                      perItemMs: 50,
+                      maxSpreadMs: 600,
+                    ),
+                    duration: const Duration(milliseconds: 380),
+                    offset: 22,
+                    child: ItemGridCard(item: item),
+                  );
                 },
               );
             },

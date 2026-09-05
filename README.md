@@ -16,8 +16,9 @@ AI and ML-powered Lost & Found application that turns your lost into found, with
 
 ## Current Status
 
-**Last Updated:** 2026-08-26  
-**Overall:** Core features implemented. App builds and runs. Some features are placeholder-only.
+**Last Updated:** 2026-09-04  
+**Overall:** Core features implemented. App builds and runs. Push notifications (with in-app banner), search, profile editing, and image gallery all working. A few features remain placeholder-only.  
+**Session log:** See `docs/development_status.md` and `DEV_STATUS.md` for detailed per-session progress.
 
 ### Implemented Features
 
@@ -31,32 +32,33 @@ AI and ML-powered Lost & Found application that turns your lost into found, with
 | **Contact Reporter** | Working | Peer-to-peer chat between finders and reporters |
 | **Admin Dashboard** | Working | Real-time stats, charts, user management, review queue |
 | **Notifications Screen** | Working | In-app notifications with mark-as-read |
+| **Push Notifications** | Working | FCM tokens saved on login + refresh; foreground in-app banner; tap-through to item |
 | **Home Feed** | Working | Real Firestore stats, recently reported items, quick actions |
 | **User Reports** | Working | Users can view their own reports with status badges |
-| **Firestore Security Rules** | Deployed | Admin-only moderation, owner-limited updates |
+| **Profile Editing** | Working | Edit display name and photo |
+| **Global Search** | Working | Search bar on Browse page filters approved items by query |
+| **Image Gallery** | Working | Item detail shows all photos; full gallery screen with viewer |
+| **Firestore Security Rules** | Deployed | Admin-only moderation, owner-limited updates (latest `claimed` change needs re-deploy) |
 | **Firestore Indexes** | Deployed | Composite indexes for efficient queries |
 | **Storage Rules** | Deployed | Authenticated users can upload with size/type limits |
-| **Cloud Functions** | Deployed | OTP delivery, FCM push notifications, moderation migration |
+| **Cloud Functions** | Deployed | OTP delivery, FCM push notifications, moderation migration (Node 22) |
 
 ### Partially Implemented / Placeholder
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **AI Camera Scanner** | Placeholder | UI exists but no actual AI/Gemini integration |
-| **Profile Editing** | Placeholder | Profile page shows info but no edit capability |
-| **Notifications Access** | Broken | Home feed notification button shows "coming soon" snackbar |
-| **Admin Sidebar Sections** | Placeholder | Lost Items, Found Items, Reports sections show placeholder |
-| **Global Search** | Placeholder | Search bar exists but no functionality |
+| **Admin Sidebar Sections** | Placeholder | Reports section shows placeholder |
 | **Pull-to-refresh** | Partial | Exists on browse page, missing on grid pages |
 
 ### Known Blockers
 
 | Issue | Priority | Status |
 |-------|----------|--------|
-| `kAdminUid` placeholder (`REPLACE_WITH_ADMIN_UID`) | P0 | Must update with actual admin UID |
-| Firestore rules not deployed (local changes) | P0 | Run `firebase deploy --only firestore:rules` |
-| FCM tokens not saved to Firestore | P1 | Users won't receive push notifications |
-| Duplicate chat services (`ChatService` + `KashtepChatService`) | P2 | Tech debt, should consolidate |
+| Latest Firestore rules change not deployed | P0 | Owner `claimed` status update — run `firebase deploy --only firestore:rules` |
+| Admin doc `isAdmin: true` not verified | P0 | `lookupAdminUid()` needs `users/{uid}.isAdmin == true` on the admin user |
+| Moderation migration not run | P1 | Tap "Run Moderation Migration" in admin Settings |
+| Admin inbox lacks unread badges / last-message preview | P2 | Polish task |
 
 ---
 
@@ -64,38 +66,35 @@ AI and ML-powered Lost & Found application that turns your lost into found, with
 
 ### Priority 1: Critical (Must Fix)
 
-1. **Update Admin UID** — Replace `kAdminUid` placeholder with actual Firebase Auth UID
-2. **Deploy Firestore Rules** — Run `firebase deploy --only firestore:rules` to enable status updates
-3. **Save FCM Tokens** — Store device tokens in `users/{uid}.fcmTokens` on login for push notifications
-4. **Wire Notifications Screen** — Replace "coming soon" snackbar with actual navigation to `NotificationsScreen`
+1. **Deploy Firestore Rules** — Run `firebase deploy --only firestore:rules` to enable the owner `claimed` status update
+2. **Verify Admin Setup** — Confirm admin user doc has `isAdmin: true`; run the moderation migration from admin Settings
+3. **Deploy Cloud Functions** — `firebase deploy --only functions` (Node 22) for push notifications
 
 ### Priority 2: Core Features
 
-5. **AI Camera Scanner** — Integrate Gemini Vision API for real-time item recognition and matching
-6. **Image Gallery** — Swipeable PageView for items with multiple photos, full-screen viewer with pinch-to-zoom
-7. **Profile Editing** — Allow users to update display name and photo
-8. **Global Search** — Implement real search across approved items by title, description, category
+4. **AI Camera Scanner** — Integrate Gemini Vision API for real-time item recognition and matching
+5. **Admin Inbox Polish** — Unread badges and last-message preview in `admin_inbox_screen.dart`
 
 ### Priority 3: Admin Features
 
-9. **Admin Lost Items Section** — Show all lost items with filters (status, date, category)
-10. **Admin Found Items Section** — Show all found items with filters
-11. **Admin Reports Section** — Aggregated reports view with export capability
-12. **Image Compression** — Compress before upload to save storage/bandwidth
+6. **Admin Lost Items Section** — Show all lost items with filters (status, date, category)
+7. **Admin Found Items Section** — Show all found items with filters
+8. **Admin Reports Section** — Aggregated reports view with export capability
+9. **Image Compression** — Compress before upload to save storage/bandwidth
 
 ### Priority 4: Polish & UX
 
-13. **Pull-to-refresh** — Add to all grid/list pages
-14. **Loading Skeletons** — Replace spinners with shimmer placeholders
-15. **Empty States** — Better empty state illustrations and messaging
-16. **Error Handling** — Graceful network error handling with retry options
-17. **App Check** — Configure Firebase App Check to stop placeholder token warnings
+10. **Pull-to-refresh** — Add to all grid/list pages
+11. **Loading Skeletons** — Replace spinners with shimmer placeholders
+12. **Empty States** — Better empty state illustrations and messaging
+13. **Error Handling** — Graceful network error handling with retry options
+14. **App Check** — Configure Firebase App Check to stop placeholder token warnings
 
-### Priority 5: Tech Debt
+### Priority 5: Tech Debt (DONE 2026-09-04)
 
-18. **Merge Chat Services** — Remove legacy `ChatService`, standardize on `KashtepChatService`
-19. **Remove Unused Models** — Clean up `AppMessage` model if not needed
-20. **Node.js Upgrade** — Migrate Cloud Functions from Node.js 20 (deprecated) to Node.js 22
+- ~~Merge Chat Services~~ — `KashtepChatService` deleted; `ChatService` is the single chatbot backend
+- ~~Remove Unused Models~~ — `AppMessage` model deleted
+- ~~Node.js Upgrade~~ — Cloud Functions now target Node.js 22 (`functions/package.json`)
 
 ---
 
@@ -135,8 +134,7 @@ lib/
     auth_service.dart        — Authentication abstraction + Firebase
     otp_api.dart             — OTP backend (Cloud Functions)
     chat_service.dart        — Legacy chat service (deprecated)
-    kashtep_chat_service.dart — Active chat service
-    notification_service.dart — FCM push notifications
+    notification_service.dart — FCM push notifications (tokens + foreground banner events)
   data/firestore/
     item_repository.dart     — Item CRUD + streams
     admin_repository.dart    — Admin data streams
@@ -148,8 +146,7 @@ lib/
     user_profile.dart        — User profile model
     support_chat.dart        — Chat document model
     support_message.dart     — Message model
-    app_message.dart         — Legacy message model (unused)
-  widgets/                   — 30+ reusable UI components
+  widgets/                   — 30+ reusable UI components (incl. notification_banner.dart, chatbot.dart)
   theme/app_theme.dart       — Design tokens and Material 3 theme
   utils/                     — Validators, cooldown timer, page transitions
 

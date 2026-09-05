@@ -1,4 +1,7 @@
 rules_version = '2';
+// NOTE: Firebase App Check is not currently configured for this project.
+// When moving to production, enable App Check with Play Integrity (Android)
+// and DeviceCheck/App Attest (iOS) to prevent abuse.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -16,19 +19,21 @@ service cloud.firestore {
             || resource.data.ownerUid == request.auth.uid
             || isAdmin());
 
-      // Create: authenticated user can create their own items (auto-set pending)
+      // Create: authenticated user can create their own items; the reporter
+      // UID is recorded in reportedBy at creation time (auto-set pending)
       allow create: if request.auth != null
-        && request.resource.data.ownerUid == request.auth.uid;
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.reportedBy == request.auth.uid;
 
-      // Update: admin can update all; owner can update other fields, or set status to claimed
+      // Update: admin can update all; owner can update non-moderation fields.
+      // Status changes (including claiming) go through the claimItem Cloud
+      // Function — the owner can no longer set status directly, which closes
+      // the self-claim bypass.
       allow update: if request.auth != null
         && (isAdmin()
             || (resource.data.ownerUid == request.auth.uid
                 && !request.resource.data.diff(resource.data)
-                     .affectedKeys().hasAny(['moderationStatus']))
-            || (resource.data.ownerUid == request.auth.uid
-                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-                && request.resource.data.status == 'claimed'));
+                     .affectedKeys().hasAny(['moderationStatus', 'status', 'claimedBy'])));
 
       // Delete: owner or admin
       allow delete: if request.auth != null
@@ -38,10 +43,46 @@ service cloud.firestore {
     // ── users ────────────────────────────────────────────────────────────
     match /users/{uid} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == uid;
+
+      // Users may only create their own profile and must NOT set privileged
+      // fields (isAdmin/role) — admin assignment happens server-side only
+      // (grantAdminIfAuthorized Cloud Function / custom claims).
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && !('isAdmin' in request.resource.data)
+        && !('role' in request.resource.data);
+
+      // Self-updates are allowed for profile fields, but never for
+      // privileged fields — a normal user cannot self-promote.
       allow update: if request.auth != null
-        && (request.auth.uid == uid || isAdmin());
-      allow delete: if false;
+        && (isAdmin()
+            || (request.auth.uid == uid
+                && !request.resource.data.diff(resource.data)
+                     .affectedKeys().hasAny(['isAdmin', 'role'])));
+
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── users/{uid}/blocked_users ─────────────────────────────────────
+    match /users/{uid}/blocked_users/{blockedUid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── users/{uid}/preferences ───────────────────────────────────────
+    match /users/{uid}/preferences/{docId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── moderation_reports ─────────────────────────────────────────────
+    match /moderation_reports/{reportId} {
+      allow read: if request.auth != null && isAdmin();
+      allow create: if request.auth != null
+        && request.resource.data.reporterUid == request.auth.uid;
+      allow update: if request.auth != null && isAdmin();
+      allow delete: if request.auth != null && isAdmin();
     }
 
     // ── users/{uid}/notifications ────────────────────────────────────────
@@ -50,8 +91,9 @@ service cloud.firestore {
       allow read: if request.auth != null
         && (request.auth.uid == userId || isAdmin());
 
-      // Admin or Cloud Function can create notifications
-      allow create: if request.auth != null && isAdmin();
+      // Any authenticated user can create notifications (for claim flows,
+      // admin moderation, etc.). The server should validate intent.
+      allow create: if request.auth != null;
 
       // Only the user can mark their own notifications as read
       allow update: if request.auth != null
@@ -67,6 +109,12 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == uid;
       allow update: if request.auth != null && request.auth.uid == uid;
       allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── chatbot history (per-user, server-side Gemini) ────────────────
+    match /chatbot_history/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
     // ── chats (1-on-1 support messages) ─────────────────────────────────

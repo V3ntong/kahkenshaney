@@ -1,6 +1,22 @@
 import * as admin from 'firebase-admin';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import {
+  computeMatchScore,
+  MATCH_THRESHOLD,
+  MatchScoreEntry,
+  MAX_STORED_MATCHES,
+  MatchableItem,
+  selectMatches,
+} from './matching';
+import {
+  MATCHED_STATUS,
+  PENDING_CLAIM_STATUS,
+  RESOLVED_STATUS,
+  validateClaim,
+  validateMatchConfirm,
+  validateResolve,
+} from './claims';
 import { sendOtpEmail } from './email';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {
@@ -519,3 +535,544 @@ export const sendPushNotification = onDocumentCreated(
     }
   }
 );
+
+// ── Smart Description Matching ────────────────────────────────────────────
+
+/**
+ * Creates an in-app notification document for a user. The existing
+ * [sendPushNotification] trigger turns this into an FCM push automatically.
+ */
+async function notifyUser(
+  userId: string,
+  title: string,
+  body: string,
+  type: string,
+  relatedItemId?: string
+): Promise<void> {
+  try {
+    await db.collection('users').doc(userId).collection('notifications').add({
+      title,
+      body,
+      type,
+      relatedItemId: relatedItemId ?? null,
+      isRead: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error(`[notifyUser] Failed to notify user ${userId}:`, error);
+  }
+}
+
+/** Maps a Firestore document to the pure [MatchableItem] shape. */
+function toMatchableItem(id: string, data: FirebaseFirestore.DocumentData): MatchableItem {
+  return {
+    id,
+    kind: data.kind === 'found' ? 'found' : 'lost',
+    title: String(data.title ?? ''),
+    description: String(data.description ?? ''),
+    category: data.category ?? null,
+    location: data.location ?? null,
+    createdAt: data.createdAt?.toDate?.() ?? null,
+    status: String(data.status ?? 'open'),
+    moderationStatus: String(data.moderationStatus ?? 'pending'),
+    reportedBy: data.reportedBy ?? null,
+    ownerUid: data.ownerUid ?? null,
+  };
+}
+
+/**
+ * Scores a newly approved item against open items of the opposite kind,
+ * persists the top matches to BOTH documents, and notifies both parties for
+ * high-confidence matches. Safe to re-run: notifications are only sent for
+ * pairs that are not already stored as matches.
+ */
+async function runMatchingForItem(itemId: string): Promise<void> {
+  const itemDoc = await db.collection('items').doc(itemId).get();
+  const itemData = itemDoc.data();
+  if (!itemData) {
+    console.log(`[matching] Item ${itemId} not found, skipping`);
+    return;
+  }
+
+  const item = toMatchableItem(itemId, itemData);
+  if (item.moderationStatus !== 'approved') {
+    console.log(`[matching] Item ${itemId} not approved, skipping`);
+    return;
+  }
+  if (['claimed', 'resolved', 'closed'].includes(item.status)) {
+    console.log(`[matching] Item ${itemId} is terminal, skipping`);
+    return;
+  }
+
+  const oppositeKind = item.kind === 'lost' ? 'found' : 'lost';
+  const candidates = await db
+    .collection('items')
+    .where('moderationStatus', '==', 'approved')
+    .where('kind', '==', oppositeKind)
+    .get();
+
+  const scored: MatchScoreEntry[] = [];
+  const candidateData: { id: string; data: FirebaseFirestore.DocumentData }[] = [];
+
+  for (const doc of candidates.docs) {
+    if (doc.id === itemId) continue;
+    const candidate = toMatchableItem(doc.id, doc.data());
+    if (['claimed', 'resolved', 'closed'].includes(candidate.status)) continue;
+
+    const score = computeMatchScore(item, candidate);
+    scored.push({
+      itemId: candidate.id,
+      title: candidate.title,
+      kind: candidate.kind,
+      score,
+      matchedAt: new Date(),
+    });
+    candidateData.push({ id: doc.id, data: doc.data() });
+  }
+
+  const storedForItem = selectMatches(scored, {
+    threshold: 0, // store the top candidates regardless of threshold
+    max: MAX_STORED_MATCHES,
+  });
+
+  // Persist match scores on the item itself (displayed without recomputation).
+  if (storedForItem.length > 0) {
+    await itemDoc.ref.update({ matchScores: storedForItem });
+  }
+
+  // Persist the reverse direction on each candidate, and notify both parties
+  // for high-confidence matches.
+  for (const entry of storedForItem) {
+    if (entry.score < MATCH_THRESHOLD) continue;
+
+    const candidateRef = db.collection('items').doc(entry.itemId);
+    const candidateDoc = await candidateRef.get();
+    if (!candidateDoc.exists) continue;
+
+    const reverseEntry: MatchScoreEntry = {
+      itemId: item.id,
+      title: item.title,
+      kind: item.kind,
+      score: entry.score,
+      matchedAt: new Date(),
+    };
+
+    // Merge with existing scores (dedupe by itemId, keep highest score).
+    const existing = (candidateDoc.data()?.matchScores as MatchScoreEntry[] | undefined) ?? [];
+    const merged = [
+      ...existing.filter((m) => m.itemId !== item.id),
+      reverseEntry,
+    ]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_STORED_MATCHES);
+    await candidateRef.update({ matchScores: merged });
+
+    const alreadyNotified = existing.some((m) => m.itemId === item.id);
+    if (alreadyNotified) continue;
+
+    const kindLabel = item.kind === 'lost' ? 'lost' : 'found';
+    const otherLabel = item.kind === 'lost' ? 'found' : 'lost';
+
+    // Notify the new item's reporter (skip when both items are theirs).
+    if (item.reportedBy && item.reportedBy !== candidateDoc.data()?.reportedBy) {
+      await notifyUser(
+        item.reportedBy,
+        'Suggested Match Found!',
+        `Your ${kindLabel} item "${item.title}" matches "${entry.title}" (${entry.score}% match). Please review it.`,
+        'match_suggestion',
+        entry.itemId
+      );
+    }
+
+    // Notify the existing candidate's reporter.
+    const candidateOwner = candidateDoc.data()?.reportedBy;
+    if (candidateOwner && candidateOwner !== item.reportedBy) {
+      await notifyUser(
+        candidateOwner,
+        'Suggested Match Found!',
+        `Your ${otherLabel} item "${entry.title}" matches "${item.title}" (${entry.score}% match). Please review it.`,
+        'match_suggestion',
+        item.id
+      );
+    }
+  }
+}
+
+/**
+ * Firestore trigger: runs matching when a new item is created already
+ * approved (e.g. restored/imported data). New reports are created as
+ * `pending`, so matching normally runs on approval (see [itemApproved]).
+ */
+export const itemMatchingOnCreate = onDocumentCreated(
+  { region: 'us-central1', document: 'items/{itemId}' },
+  async (event) => {
+    const data = event.data?.data();
+    if (data?.moderationStatus !== 'approved') return;
+    await runMatchingForItem(event.params.itemId);
+  }
+);
+
+/**
+ * Firestore trigger: runs matching when an item transitions to `approved`
+ * (admin approval) and sends the claimer a notification when a claim is
+ * confirmed (status → claimed/resolved).
+ */
+export const itemLifecycle = onDocumentUpdated(
+  { region: 'us-central1', document: 'items/{itemId}' },
+  async (event) => {
+    const before = event.data?.before.data() ?? {};
+    const after = event.data?.after.data() ?? {};
+
+    // Newly approved → compute smart matches.
+    if (
+      before.moderationStatus !== 'approved' &&
+      after.moderationStatus === 'approved'
+    ) {
+      await runMatchingForItem(event.params.itemId);
+    }
+
+    // Status changed to claimed/resolved → notify the claimer (if any).
+    if (before.status !== after.status) {
+      const claimedBy = after.claimedBy;
+      const reporter = after.reportedBy || after.ownerUid;
+      if (
+        claimedBy &&
+        claimedBy !== reporter &&
+        (after.status === 'claimed' || after.status === 'resolved')
+      ) {
+        await notifyUser(
+          claimedBy,
+          after.status === 'resolved' ? 'Claim Resolved' : 'Claim Confirmed',
+          `Your claim for "${after.title ?? 'an item'}" has been ${after.status === 'resolved' ? 'resolved' : 'confirmed'}.`,
+          `status_${after.status}`,
+          event.params.itemId
+        );
+      }
+    }
+  }
+);
+
+// ── Claim Item (server-side, self-claim protected) ───────────────────────
+
+/**
+ * Callable: a signed-in user claims an item. Validates server-side that the
+ * claimer did not report the item themselves, that the item is open, and that
+ * it has not already been claimed. On success the item moves to
+ * `pendingClaim` and both parties are notified.
+ */
+export const claimItem = onCall(async (request) => {
+  const claimerUid = request.auth?.uid;
+  if (!claimerUid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in to claim an item.');
+  }
+
+  const itemId =
+    typeof request.data?.itemId === 'string' ? request.data.itemId.trim() : '';
+  if (!itemId) {
+    throw new HttpsError('invalid-argument', 'Missing item ID.');
+  }
+
+  const itemDoc = await db.collection('items').doc(itemId).get();
+  if (!itemDoc.exists) {
+    throw new HttpsError('not-found', 'This item no longer exists.');
+  }
+  const data = itemDoc.data()!;
+
+  const validation = validateClaim({
+    reportedBy: data.reportedBy ?? data.ownerUid ?? null,
+    status: data.status ?? 'open',
+    claimedBy: data.claimedBy ?? null,
+    claimerUid,
+  });
+
+  if (!validation.ok) {
+    throw new HttpsError(validation.code as never, validation.message);
+  }
+
+  const history = Array.isArray(data.statusHistory) ? data.statusHistory : [];
+  const updatedHistory = [
+    ...history,
+    {
+      status: PENDING_CLAIM_STATUS,
+      changedAt: admin.firestore.Timestamp.now(),
+      changedBy: claimerUid,
+    },
+  ];
+
+  await itemDoc.ref.update({
+    status: PENDING_CLAIM_STATUS,
+    claimedBy: claimerUid,
+    statusHistory: updatedHistory,
+    updatedAt: admin.firestore.Timestamp.now(),
+  });
+
+  const reporter = data.reportedBy || data.ownerUid;
+  const itemTitle = String(data.title ?? 'an item');
+
+  // Notify the reporter that someone submitted a claim.
+  if (reporter && reporter !== claimerUid) {
+    await notifyUser(
+      reporter,
+      'Claim Submitted',
+      `Someone has claimed your item "${itemTitle}". Please review and confirm the claim.`,
+      'claim_submitted',
+      itemId
+    );
+  }
+
+  // Notify the claimer that their claim is pending review.
+  await notifyUser(
+    claimerUid,
+    'Claim Submitted',
+    `Your claim for "${itemTitle}" has been submitted and is pending review.`,
+    'claim_submitted',
+    itemId
+  );
+
+  return { ok: true, status: PENDING_CLAIM_STATUS };
+});
+
+// ── Resolve Item (server-side lifecycle) ─────────────────────────────────
+
+/**
+ * Callable: marks an item resolved. The caller must be the item's reporter
+ * (or owner) or an admin. Writes the terminal status together with
+ * `resolvedAt`/`resolvedBy` and a status-history entry atomically, and
+ * notifies the other party (owner or claimer) when applicable.
+ */
+export const resolveItem = onCall(async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in to resolve an item.');
+  }
+
+  const itemId =
+    typeof request.data?.itemId === 'string' ? request.data.itemId.trim() : '';
+  if (!itemId) {
+    throw new HttpsError('invalid-argument', 'Missing item ID.');
+  }
+
+  const itemDoc = await db.collection('items').doc(itemId).get();
+  if (!itemDoc.exists) {
+    throw new HttpsError('not-found', 'This item no longer exists.');
+  }
+  const data = itemDoc.data()!;
+
+  let isAdmin = false;
+  try {
+    const userDoc = await db.collection('users').doc(callerUid).get();
+    isAdmin = userDoc.data()?.isAdmin === true;
+  } catch {
+    isAdmin = false;
+  }
+
+  const validation = validateResolve({
+    status: data.status ?? 'open',
+    ownerUid: data.ownerUid ?? null,
+    reportedBy: data.reportedBy ?? null,
+    callerUid,
+    isAdmin,
+  });
+
+  if (!validation.ok) {
+    throw new HttpsError(validation.code as never, validation.message);
+  }
+
+  const history = Array.isArray(data.statusHistory) ? data.statusHistory : [];
+  const updatedHistory = [
+    ...history,
+    {
+      status: RESOLVED_STATUS,
+      changedAt: admin.firestore.Timestamp.now(),
+      changedBy: callerUid,
+    },
+  ];
+
+  const now = admin.firestore.Timestamp.now();
+  await itemDoc.ref.update({
+    status: RESOLVED_STATUS,
+    resolvedAt: now,
+    resolvedBy: callerUid,
+    statusHistory: updatedHistory,
+    updatedAt: now,
+  });
+
+  const owner = data.reportedBy || data.ownerUid;
+  const claimedBy = data.claimedBy ?? null;
+  const itemTitle = String(data.title ?? 'an item');
+
+  // Notify the owner when someone else resolved it.
+  if (owner && owner !== callerUid) {
+    await notifyUser(
+      owner,
+      'Item Resolved',
+      `Your item "${itemTitle}" has been marked as resolved.`,
+      'status_resolved',
+      itemId
+    );
+  }
+
+  // Notify the claimer (if any) that their claim was resolved.
+  if (claimedBy && claimedBy !== callerUid && claimedBy !== owner) {
+    await notifyUser(
+      claimedBy,
+      'Claim Resolved',
+      `Your claim for "${itemTitle}" has been resolved.`,
+      'status_resolved',
+      itemId
+    );
+  }
+
+  return { ok: true, status: RESOLVED_STATUS };
+});
+
+// ── Admin Role Grant (server-side only) ──────────────────────────────────
+
+/**
+ * Callable: promotes the caller's user document to admin, but only when
+ * their verified email matches the designated admin email. Admin assignment
+ * never happens client-side — the app calls this and the server decides.
+ */
+export const grantAdminIfAuthorized = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+
+  let email: string | undefined;
+  try {
+    const user = await admin.auth().getUser(uid);
+    email = user.email;
+  } catch {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+
+  const normalized = (email ?? '').trim().toLowerCase();
+  if (normalized !== ADMIN_EMAIL) {
+    // Silently no-op for non-admins — no error, no privilege granted.
+    return { granted: false };
+  }
+
+  await db.collection('users').doc(uid).set(
+    {
+      isAdmin: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return { granted: true };
+});
+
+// ── Confirm Match (link two reports) ─────────────────────────────────────
+
+/**
+ * Callable: confirms that two opposite-kind items are the same object,
+ * atomically linking them via `matchedItemId` and moving both to `matched`.
+ * The caller must be an admin or the reporter/owner of either item.
+ */
+export const confirmMatch = onCall(async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in to confirm a match.');
+  }
+
+  const itemId =
+    typeof request.data?.itemId === 'string' ? request.data.itemId.trim() : '';
+  const matchedItemId =
+    typeof request.data?.matchedItemId === 'string'
+      ? request.data.matchedItemId.trim()
+      : '';
+  if (!itemId || !matchedItemId || itemId === matchedItemId) {
+    throw new HttpsError('invalid-argument', 'Two different item IDs are required.');
+  }
+
+  const [itemDoc, matchedDoc] = await Promise.all([
+    db.collection('items').doc(itemId).get(),
+    db.collection('items').doc(matchedItemId).get(),
+  ]);
+  if (!itemDoc.exists || !matchedDoc.exists) {
+    throw new HttpsError('not-found', 'One of the items no longer exists.');
+  }
+  const data = itemDoc.data()!;
+  const matchedData = matchedDoc.data()!;
+
+  let isAdmin = false;
+  try {
+    const userDoc = await db.collection('users').doc(callerUid).get();
+    isAdmin = userDoc.data()?.isAdmin === true;
+  } catch {
+    isAdmin = false;
+  }
+
+  const validation = validateMatchConfirm({
+    kind: data.kind ?? null,
+    matchedKind: matchedData.kind ?? null,
+    status: data.status ?? 'open',
+    matchedStatus: matchedData.status ?? 'open',
+    reportedBy: data.reportedBy ?? null,
+    matchedReportedBy: matchedData.reportedBy ?? null,
+    ownerUid: data.ownerUid ?? null,
+    matchedOwnerUid: matchedData.ownerUid ?? null,
+    callerUid,
+    isAdmin,
+  });
+
+  if (!validation.ok) {
+    throw new HttpsError(validation.code as never, validation.message);
+  }
+
+  const now = admin.firestore.Timestamp.now();
+  const historyA = Array.isArray(data.statusHistory) ? data.statusHistory : [];
+  const historyB = Array.isArray(matchedData.statusHistory)
+    ? matchedData.statusHistory
+    : [];
+  const entry = {
+    status: MATCHED_STATUS,
+    changedAt: now,
+    changedBy: callerUid,
+  };
+
+  const batch = db.batch();
+  batch.update(itemDoc.ref, {
+    matchedItemId,
+    status: MATCHED_STATUS,
+    statusHistory: [...historyA, entry],
+    updatedAt: now,
+  });
+  batch.update(matchedDoc.ref, {
+    matchedItemId: itemId,
+    status: MATCHED_STATUS,
+    statusHistory: [...historyB, entry],
+    updatedAt: now,
+  });
+  await batch.commit();
+
+  const titleA = String(data.title ?? 'an item');
+  const titleB = String(matchedData.title ?? 'an item');
+  const ownerA = data.reportedBy || data.ownerUid;
+  const ownerB = matchedData.reportedBy || matchedData.ownerUid;
+
+  if (ownerA && ownerA !== callerUid) {
+    await notifyUser(
+      ownerA,
+      'Match Confirmed',
+      `Your "${titleA}" has been matched with "${titleB}".`,
+      'match_confirmed',
+      matchedItemId
+    );
+  }
+  if (ownerB && ownerB !== callerUid) {
+    await notifyUser(
+      ownerB,
+      'Match Confirmed',
+      `Your "${titleB}" has been matched with "${titleA}".`,
+      'match_confirmed',
+      itemId
+    );
+  }
+
+  return { ok: true, status: MATCHED_STATUS };
+});
+
+/** The single designated admin email (mirrors the client constant). */
+const ADMIN_EMAIL = 'mugiwaranomelvin@gmail.com';

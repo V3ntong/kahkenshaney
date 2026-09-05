@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../models/saved_account.dart';
 import '../../services/auth_service.dart';
+import '../../services/saved_accounts_store.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/validators.dart';
 import '../../widgets/app_alert.dart';
@@ -14,9 +16,12 @@ import 'forgot_password.dart';
 import 'signup.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, this.authService});
+  const LoginScreen({super.key, this.authService, this.savedAccountsStore});
 
   final AuthService? authService;
+
+  /// Local store for the account switcher; injectable for tests.
+  final SavedAccountsStore? savedAccountsStore;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -26,16 +31,88 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _passwordFocus = FocusNode();
 
   bool _loading = false;
   String? _error;
+  List<SavedAccount> _accounts = const [];
 
   late final AuthService _auth = widget.authService ?? FirebaseAuthService();
+  late final SavedAccountsStore _store =
+      widget.savedAccountsStore ?? SavedAccountsStore();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedAccounts();
+  }
+
+  Future<void> _loadSavedAccounts() async {
+    final accounts = await _store.loadAccounts();
+    if (!mounted) return;
+    setState(() => _accounts = accounts);
+  }
+
+  /// Records the signed-in account on this device (profile info only — never
+  /// passwords or tokens) so it appears in the switcher next time.
+  Future<void> _persistCurrentAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      await _store.saveAccount(
+        SavedAccount(
+          uid: user.uid,
+          email: user.email ?? '',
+          displayName: user.displayName,
+          photoUrl: user.photoURL,
+          lastLoginAt: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Login] failed to save account locally: $e');
+    }
+  }
+
+  /// Selecting a saved account NEVER auto-logs-in: it prefills the email and
+  /// asks for the password (lightweight re-authentication).
+  void _selectSavedAccount(SavedAccount account) {
+    _emailController.text = account.email;
+    _passwordController.clear();
+    _passwordFocus.requestFocus();
+  }
+
+  Future<void> _confirmRemoveAccount(SavedAccount account) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove saved account?'),
+        content: const Text(
+          'This only clears the account from THIS device. Your account and '
+          'data are not affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final remaining = await _store.removeAccount(account.uid);
+    if (!mounted) return;
+    setState(() => _accounts = remaining);
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -55,6 +132,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     switch (result) {
       case AuthSuccess():
+        // Remember this account on-device for the login switcher.
+        await _persistCurrentAccount();
+        if (!mounted) return;
         await _auth.refreshAdminStatus();
         if (!mounted) return;
         final home = _auth.isAdminAuthenticated
@@ -125,6 +205,34 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
       children: [
+        // Saved accounts from this device (account switcher).
+        if (_accounts.isNotEmpty) ...[
+          _SavedAccountsSection(
+            accounts: _accounts,
+            onSelect: _selectSavedAccount,
+            onRemove: _confirmRemoveAccount,
+            onCreateNew: _goToRegister,
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(child: Divider()),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'Use another profile',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+              const Expanded(child: Divider()),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
         Form(
           key: _formKey,
           child: Column(
@@ -143,6 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
               AppTextField(
                 controller: _passwordController,
+                focusNode: _passwordFocus,
                 label: 'Password',
                 hintText: 'Enter your password',
                 prefixIcon: Icons.lock_outline_rounded,
@@ -175,6 +284,181 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Saved Accounts Section (account switcher) ───────────────────────────
+
+class _SavedAccountsSection extends StatelessWidget {
+  const _SavedAccountsSection({
+    required this.accounts,
+    required this.onSelect,
+    required this.onRemove,
+    required this.onCreateNew,
+  });
+
+  final List<SavedAccount> accounts;
+  final ValueChanged<SavedAccount> onSelect;
+  final ValueChanged<SavedAccount> onRemove;
+  final VoidCallback onCreateNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'SAVED ACCOUNTS',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textTertiary,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ...accounts.map(
+          (account) => _SavedAccountTile(
+            account: account,
+            onTap: () => onSelect(account),
+            onRemove: () => onRemove(account),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _CreateAccountTile(onTap: onCreateNew),
+      ],
+    );
+  }
+}
+
+class _SavedAccountTile extends StatelessWidget {
+  const _SavedAccountTile({
+    required this.account,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final SavedAccount account;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = account.photoUrl;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.cardBorder),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppColors.primarySurface,
+                  foregroundImage: photoUrl != null
+                      ? NetworkImage(photoUrl)
+                      : null,
+                  onForegroundImageError:
+                      photoUrl != null ? (_, __) {} : null,
+                  child: Text(
+                    account.initial,
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        account.displayLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        account.maskedEmail,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onRemove,
+                  tooltip: 'Remove saved account',
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 20,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CreateAccountTile extends StatelessWidget {
+  const _CreateAccountTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cardBorder),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.add_circle_outline_rounded,
+                  size: 20, color: AppColors.primary),
+              SizedBox(width: 12),
+              Text(
+                'Create new account',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

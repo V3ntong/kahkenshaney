@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/settings_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_logo.dart';
 
@@ -84,6 +85,19 @@ class ProfilePage extends StatelessWidget {
                   icon: Icons.key_rounded,
                   label: 'Change Password',
                   onTap: onChangePassword,
+                ),
+                const SizedBox(height: 8),
+                _ProfileTile(
+                  icon: Icons.settings_outlined,
+                  label: 'Settings',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
                 _ProfileTile(

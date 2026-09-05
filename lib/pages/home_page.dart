@@ -25,6 +25,7 @@ class HomePage extends StatefulWidget {
     this.onSignOut,
     this.onTabChanged,
     this.unreadCount = 0,
+    this.notificationCount = 0,
     this.overlayDismissed = false,
   });
 
@@ -36,6 +37,10 @@ class HomePage extends StatefulWidget {
   final VoidCallback? onSignOut;
   final ValueChanged<int>? onTabChanged;
   final int unreadCount;
+
+  /// Unread in-app notification count (match suggestions, claims, etc.)
+  /// shown as a badge on the Home tab.
+  final int notificationCount;
   final bool overlayDismissed;
 
   @override
@@ -168,7 +173,10 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: HomeBottomNav(
         selectedIndex: _selectedIndex,
         onSelected: _goToTab,
-        unreadCount: widget.unreadCount,
+        badges: {
+          4: widget.unreadCount,
+          0: widget.notificationCount,
+        },
       ),
     );
   }

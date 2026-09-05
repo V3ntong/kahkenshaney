@@ -18,6 +18,7 @@ enum ItemStatus {
   pendingVerification,
   verified,
   matched,
+  pendingClaim,
   claimed,
   resolved,
   closed,
@@ -31,6 +32,7 @@ extension ItemStatusX on ItemStatus {
         ItemStatus.pendingVerification => 'Pending Verification',
         ItemStatus.verified => 'Verified',
         ItemStatus.matched => 'Matched',
+        ItemStatus.pendingClaim => 'Pending Claim',
         ItemStatus.claimed => 'Claimed',
         ItemStatus.resolved => 'Resolved',
         ItemStatus.closed => 'Archived',
@@ -41,6 +43,7 @@ extension ItemStatusX on ItemStatus {
         ItemStatus.pendingVerification => 'Pending',
         ItemStatus.verified => 'Verified',
         ItemStatus.matched => 'Matched',
+        ItemStatus.pendingClaim => 'Claim Pending',
         ItemStatus.claimed => 'Claimed',
         ItemStatus.resolved => 'Resolved',
         ItemStatus.closed => 'Archived',
@@ -83,6 +86,53 @@ extension ModerationStatusX on ModerationStatus {
       (m) => m.name == value,
       orElse: () => ModerationStatus.pending,
     );
+  }
+}
+
+/// A persisted smart-match candidate (stored on the item document so match
+/// scores can be displayed without recomputation on every page load).
+class ItemMatchScore {
+  const ItemMatchScore({
+    required this.itemId,
+    required this.title,
+    required this.kind,
+    required this.score,
+    this.matchedAt,
+  });
+
+  final String itemId;
+  final String title;
+  final ItemKind kind;
+
+  /// Similarity 0–100 (computed server-side by the matching Cloud Function).
+  final int score;
+  final DateTime? matchedAt;
+
+  factory ItemMatchScore.fromMap(Map<String, dynamic> map) {
+    return ItemMatchScore(
+      itemId: (map['itemId'] as String?) ?? '',
+      title: (map['title'] as String?) ?? '',
+      kind: ItemKindX.fromFirestore(map['kind'] as String?),
+      score: ((map['score'] as num?) ?? 0).round(),
+      matchedAt: _toDate(map['matchedAt']),
+    );
+  }
+
+  static DateTime? _toDate(Object? value) {
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return null;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'itemId': itemId,
+      'title': title,
+      'kind': kind.firestoreValue,
+      'score': score,
+      'matchedAt': matchedAt,
+    };
   }
 }
 
@@ -129,6 +179,7 @@ class LostFoundItem {
     required this.title,
     required this.description,
     required this.ownerUid,
+    this.reportedBy = '',
     this.category,
     this.location,
     this.storageLocation,
@@ -139,6 +190,9 @@ class LostFoundItem {
     this.imageUrl,
     this.storagePath,
     this.matchedItemId,
+    this.claimedBy,
+    this.matchScores = const [],
+    this.eventDate,
     this.createdAt,
     this.updatedAt,
   });
@@ -148,6 +202,10 @@ class LostFoundItem {
   final String title;
   final String description;
   final String ownerUid;
+
+  /// The UID of the user who originally reported the item. Set at creation
+  /// time and enforced by Firestore rules + the server-side claim check.
+  final String reportedBy;
   final String? category;
   final String? location;
   final String? storageLocation;
@@ -161,8 +219,34 @@ class LostFoundItem {
   /// The item ID this item is matched with (for matched status).
   final String? matchedItemId;
 
+  /// The UID of the user who submitted a claim (status `pendingClaim`).
+  final String? claimedBy;
+
+  /// Persisted smart-match candidates, ranked by [ItemMatchScore.score].
+  final List<ItemMatchScore> matchScores;
+
+  /// The date the item was lost/found (collected by the report forms). Used
+  /// by smart matching for date-range proximity scoring.
+  final DateTime? eventDate;
+
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  /// Whether [uid] may submit a claim for this item.
+  ///
+  /// Mirrors the server-side rule in the `claimItem` Cloud Function: the
+  /// reporter can never claim their own item, and a claim is only allowed on
+  /// a non-terminal, not-yet-claimed item. This is a UI convenience — the
+  /// server is the source of truth.
+  bool canBeClaimedBy(String uid, {bool isAdmin = false}) {
+    if (uid.isEmpty || isAdmin) return false;
+    if (uid == ownerUid || (reportedBy.isNotEmpty && uid == reportedBy)) {
+      return false;
+    }
+    if (status.isTerminal || status == ItemStatus.pendingClaim) return false;
+    if (claimedBy != null && claimedBy!.isNotEmpty) return false;
+    return true;
+  }
 
   String? get displayUrl => imageUrl ?? (media.isNotEmpty ? media.first : null);
   bool get isPublic => moderationStatus == ModerationStatus.approved;
@@ -180,6 +264,9 @@ class LostFoundItem {
     String? imageUrl,
     String? storagePath,
     String? matchedItemId,
+    String? claimedBy,
+    List<ItemMatchScore>? matchScores,
+    DateTime? eventDate,
   }) {
     return LostFoundItem(
       id: id,
@@ -187,6 +274,7 @@ class LostFoundItem {
       title: title ?? this.title,
       description: description ?? this.description,
       ownerUid: ownerUid,
+      reportedBy: reportedBy,
       category: category ?? this.category,
       location: location ?? this.location,
       storageLocation: storageLocation ?? this.storageLocation,
@@ -197,6 +285,9 @@ class LostFoundItem {
       imageUrl: imageUrl ?? this.imageUrl,
       storagePath: storagePath ?? this.storagePath,
       matchedItemId: matchedItemId ?? this.matchedItemId,
+      claimedBy: claimedBy ?? this.claimedBy,
+      matchScores: matchScores ?? this.matchScores,
+      eventDate: eventDate ?? this.eventDate,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
@@ -209,6 +300,7 @@ class LostFoundItem {
       title: (map['title'] as String?) ?? '',
       description: (map['description'] as String?) ?? '',
       ownerUid: (map['ownerUid'] as String?) ?? '',
+      reportedBy: (map['reportedBy'] as String?) ?? '',
       category: map['category'] as String?,
       location: map['location'] as String?,
       storageLocation: map['storageLocation'] as String?,
@@ -224,6 +316,11 @@ class LostFoundItem {
       imageUrl: map['imageUrl'] as String?,
       storagePath: map['storagePath'] as String?,
       matchedItemId: map['matchedItemId'] as String?,
+      claimedBy: map['claimedBy'] as String?,
+      matchScores: ((map['matchScores'] as List?) ?? const [])
+          .map((e) => ItemMatchScore.fromMap(e as Map<String, dynamic>))
+          .toList(),
+      eventDate: _toDate(map['eventDate']),
       createdAt: _toDate(map['createdAt']),
       updatedAt: _toDate(map['updatedAt']),
     );
@@ -235,6 +332,7 @@ class LostFoundItem {
       'title': title,
       'description': description,
       'ownerUid': ownerUid,
+      'reportedBy': reportedBy,
       'category': category,
       'location': location,
       'storageLocation': storageLocation,
@@ -245,6 +343,9 @@ class LostFoundItem {
       'imageUrl': imageUrl,
       'storagePath': storagePath,
       'matchedItemId': matchedItemId,
+      'claimedBy': claimedBy,
+      'matchScores': matchScores.map((e) => e.toMap()).toList(),
+      'eventDate': eventDate,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
