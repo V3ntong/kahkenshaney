@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../data/firestore/notification_service.dart' as firestore_notif;
 import '../pages/home_page.dart';
@@ -220,7 +219,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       delay: const Duration(milliseconds: 200),
                       maxBlur: 10,
                       slideOffset: 16,
-                      style: GoogleFonts.bebasNeue(
+                      style: const TextStyle(
+                        fontFamily: 'BebasNeue',
                         fontSize: 26,
                         color: AppColors.textPrimary,
                         letterSpacing: 1.0,
@@ -232,7 +232,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       speed: const Duration(milliseconds: 8),
                       delay: const Duration(milliseconds: 100),
                       showCursor: false,
-                      style: GoogleFonts.lobsterTwo(
+                      style: const TextStyle(
+                        fontFamily: 'LobsterTwo',
                         color: AppColors.textTertiary,
                         fontSize: 14,
                       ),

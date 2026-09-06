@@ -37,3 +37,19 @@ flutter:
   assets:
     - .env
     - assets/images/placeholder_item.png
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
+    - family: BebasNeue
+      fonts:
+        - asset: assets/fonts/BebasNeue-Regular.ttf
+    - family: LobsterTwo
+      fonts:
+        - asset: assets/fonts/LobsterTwo-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/LobsterTwo-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/LobsterTwo-Bold.ttf
+          weight: 700

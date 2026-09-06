@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 /// Premium color palette — blue core with sky, mint, amber accents.
 class AppColors {
@@ -93,7 +92,7 @@ ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    fontFamily: GoogleFonts.inter().fontFamily,
+    fontFamily: 'Inter',
     scaffoldBackgroundColor: AppColors.background,
 
     // ── AppBar ────────────────────────────────────────

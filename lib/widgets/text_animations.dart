@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_theme.dart';
 
@@ -263,7 +262,8 @@ class _AnimatedAuthHeaderState extends State<AnimatedAuthHeader> {
   Widget build(BuildContext context) {
     final titleStyle =
         widget.titleStyle ??
-        GoogleFonts.bebasNeue(
+        const TextStyle(
+          fontFamily: 'BebasNeue',
           fontSize: 32,
           fontWeight: FontWeight.w400,
           color: AppColors.textPrimary,
@@ -272,7 +272,8 @@ class _AnimatedAuthHeaderState extends State<AnimatedAuthHeader> {
 
     final resolvedSubtitleStyle =
         widget.subtitleStyle ??
-        GoogleFonts.lobsterTwo(
+        const TextStyle(
+          fontFamily: 'LobsterTwo',
           fontSize: 15,
           color: AppColors.textSecondary,
           height: 1.5,

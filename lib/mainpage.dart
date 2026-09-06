@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/auth/signup.dart';
 import 'theme/app_theme.dart';
@@ -37,7 +36,8 @@ class MainPage extends StatelessWidget {
                         duration: const Duration(milliseconds: 1700),
                         maxBlur: 14,
                         slideOffset: 24,
-                        style: GoogleFonts.bebasNeue(
+                        style: const TextStyle(
+                          fontFamily: 'BebasNeue',
                           fontSize: 36,
                           color: AppColors.textPrimary,
                           letterSpacing: 2.0,
@@ -54,7 +54,8 @@ class MainPage extends StatelessWidget {
                         speed: kTypewriterSpeedSlow,
                         delay: const Duration(milliseconds: 300),
                         showCursor: false,
-                        style: GoogleFonts.lobsterTwo(
+                        style: const TextStyle(
+                          fontFamily: 'LobsterTwo',
                           fontSize: 15,
                           color: AppColors.textSecondary,
                           height: 1.5,

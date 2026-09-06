@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_theme.dart';
 import 'text_animations.dart';
@@ -44,7 +43,8 @@ class _GreetingHeaderState extends State<GreetingHeader> {
     return name.characters.first.toUpperCase();
   }
 
-  static final _headingStyle = GoogleFonts.bebasNeue(
+  static const _headingStyle = TextStyle(
+    fontFamily: 'BebasNeue',
     fontSize: 28,
     color: AppColors.textPrimary,
     letterSpacing: 1.0,

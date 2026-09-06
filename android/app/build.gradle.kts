@@ -66,7 +66,12 @@ android {
     // Strip ProfileInstaller entirely — it causes disk I/O that
     // kills ADB connections on budget Infinix devices.
     // Only needed for release profiling; safe to remove for dev builds.
+    // Use both configureEach (new configs) and all (already-created configs)
+    // to guarantee the exclusion fires for every configuration in AGP 9.x.
     configurations.configureEach {
+        exclude(group = "androidx.profileinstaller", module = "profileinstaller")
+    }
+    configurations.all {
         exclude(group = "androidx.profileinstaller", module = "profileinstaller")
     }
 }
