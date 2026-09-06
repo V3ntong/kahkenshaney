@@ -74,8 +74,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     // Resolution is an administrative lifecycle transition. The callable
     // enforces this again server-side; this guard keeps the control out of
     // every regular user's UI.
+    // Show when: (1) the viewer is an admin (synchronous email check), AND
+    // (2) the item status is NOT terminal (claimed/resolved/closed).
+    // NOTE: isAdminEmail() checks only the hardcoded kAdminEmail. If a
+    // dynamically-added admin (adminEmails collection) cannot see this
+    // button, switch to isAdminAuthenticated from AuthService instead.
     final canResolve = !item.status.isTerminal && isAdmin;
+    // Claimability rule: a non-admin, non-owner, non-reporter user may claim
+    // an item whose status is non-terminal and which has no pending/accepted
+    // claim yet.  The server-side `claimItem` Cloud Function mirrors this.
     final canClaim = item.canBeClaimedBy(currentUid ?? '', isAdmin: isAdmin);
+
+    debugPrint(
+      '[ItemDetail] uid=$currentUid  owner=${item.ownerUid}  '
+      'status=${item.status.name}  modStatus=${item.moderationStatus.name}  '
+      'reportedBy=${item.reportedBy}  claimedBy=${item.claimedBy}  '
+      'isAdmin=$isAdmin  isOwner=$isOwner  '
+      'canClaim=$canClaim  canResolve=$canResolve  canContact=$canContact',
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -511,18 +527,22 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         const SnackBar(content: Text('Claim submitted for review')),
       );
 
-      // Notify the item reporter
-      final notifService = NotificationService();
-      await notifService.createNotification(
-        userId: item.ownerUid,
-        title: 'Claim Submitted',
-        body: 'A claim has been submitted for your ${item.kind.name} item "${item.title}".',
-        type: 'status_pendingClaim',
-        relatedItemId: item.id,
-      );
-
-      // Notify admin
-      await notifService.notifyAdminNewReport(item: item);
+      // Fire-and-forget: notify the item reporter + admin.
+      // Wrapped in their own try-catch so a notification failure
+      // never masks the already-successful claim.
+      try {
+        final notifService = NotificationService();
+        await notifService.createNotification(
+          userId: item.ownerUid,
+          title: 'Claim Submitted',
+          body: 'A claim has been submitted for your ${item.kind.name} item "${item.title}".',
+          type: 'status_pendingClaim',
+          relatedItemId: item.id,
+        );
+        await notifService.notifyAdminNewReport(item: item);
+      } catch (_) {
+        debugPrint('[ItemDetail] Non-critical: post-claim notifications failed');
+      }
     } on ClaimApiException catch (e) {
       if (!mounted) return;
       setState(() => _isClaiming = false);

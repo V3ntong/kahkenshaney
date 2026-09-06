@@ -63,8 +63,18 @@ Future<bool> isAdminEmailAsync(String? email) async {
 /// Whether [email] matches the designated admin email (case-insensitive).
 /// This is the synchronous version; for full admin list check use isAdminEmailAsync.
 bool isAdminEmail(String? email) {
-  if (email == null) return false;
-  return email.trim().toLowerCase() == kAdminEmail.trim().toLowerCase();
+  if (email == null) {
+    debugPrint('[AuthService] isAdminEmail: email is null → false');
+    return false;
+  }
+  final normalised = email.trim().toLowerCase();
+  final target = kAdminEmail.trim().toLowerCase();
+  final result = normalised == target;
+  debugPrint(
+    '[AuthService] isAdminEmail: email="$normalised"  '
+    'target="$target"  result=$result',
+  );
+  return result;
 }
 
 /// Cached result of async admin check.

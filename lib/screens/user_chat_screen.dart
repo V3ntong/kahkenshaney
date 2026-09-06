@@ -54,24 +54,33 @@ class _UserChatScreenState extends State<UserChatScreen> {
   }
 
   Future<void> _initChat() async {
-    if (_isPeerChat) {
-      final service = SupportChatService(adminUid: widget.adminUid);
-      final chatId = await service.ensurePeerChat(widget.userId, widget.peerUid!);
+    try {
+      if (_isPeerChat) {
+        final service = SupportChatService(adminUid: widget.adminUid);
+        final chatId = await service.ensurePeerChat(widget.userId, widget.peerUid!);
+        if (!mounted) return;
+        setState(() {
+          _chatService = service;
+          _chatId = chatId;
+        });
+      } else {
+        final realAdminUid = await SupportChatService.lookupAdminUid(null);
+        final adminUid = realAdminUid ?? widget.adminUid;
+        final service = SupportChatService(adminUid: adminUid);
+        await service.ensureChat(widget.userId);
+        if (!mounted) return;
+        setState(() {
+          _chatService = service;
+          _chatId = widget.userId;
+        });
+      }
+    } catch (e) {
+      debugPrint('[UserChatScreen] _initChat error: $e');
       if (!mounted) return;
-      setState(() {
-        _chatService = service;
-        _chatId = chatId;
-      });
-    } else {
-      final realAdminUid = await SupportChatService.lookupAdminUid(null);
-      final adminUid = realAdminUid ?? widget.adminUid;
-      final service = SupportChatService(adminUid: adminUid);
-      await service.ensureChat(widget.userId);
-      if (!mounted) return;
-      setState(() {
-        _chatService = service;
-        _chatId = widget.userId;
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open chat. Please try again.')),
+      );
+      if (mounted) Navigator.of(context).pop();
     }
   }
 

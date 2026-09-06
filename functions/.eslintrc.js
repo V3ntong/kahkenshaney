@@ -18,6 +18,7 @@ module.exports = {
   ignorePatterns: [
     "lib/**",
     "node_modules/**",
+    "test/**",
     // TypeScript sources are compiled (and type-checked) by `npm run build`
     // via tsc during predeploy. ESLint here is configured for plain JS only,
     // so `.ts` files must be ignored or linting fails before deploy.

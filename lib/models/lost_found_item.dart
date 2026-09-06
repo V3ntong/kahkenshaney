@@ -234,10 +234,15 @@ class LostFoundItem {
 
   /// Whether [uid] may submit a claim for this item.
   ///
-  /// Mirrors the server-side rule in the `claimItem` Cloud Function: the
-  /// reporter can never claim their own item, and a claim is only allowed on
-  /// a non-terminal, not-yet-claimed item. This is a UI convenience — the
-  /// server is the source of truth.
+  /// Claimability rule (mirrors the server-side `claimItem` Cloud Function):
+  ///   1. Caller must be signed-in and must NOT be an admin.
+  ///   2. Caller must NOT be the item owner (`ownerUid`) or the original
+  ///      reporter (`reportedBy`).
+  ///   3. Item status must be non-terminal (not `claimed`, `resolved`, or
+  ///      `closed`) and not already `pendingClaim`.
+  ///   4. No existing claim (`claimedBy` must be null or empty).
+  ///
+  /// This is a UI convenience — the server is the source of truth.
   bool canBeClaimedBy(String uid, {bool isAdmin = false}) {
     if (uid.isEmpty || isAdmin) return false;
     if (uid == ownerUid || (reportedBy.isNotEmpty && uid == reportedBy)) {

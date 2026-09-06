@@ -186,6 +186,26 @@ void main() {
       expect(_baseItem().canBeClaimedBy('user-claimer', isAdmin: true), isFalse);
     });
 
+    test('pendingClaim status blocks claims even when claimedBy is null', () {
+      final item = _baseItem(status: ItemStatus.pendingClaim, claimedBy: null);
+      expect(item.canBeClaimedBy('user-claimer'), isFalse);
+    });
+
+    test('non-terminal statuses allow claims for other users', () {
+      for (final status in [
+        ItemStatus.open,
+        ItemStatus.pendingVerification,
+        ItemStatus.verified,
+        ItemStatus.matched,
+      ]) {
+        expect(
+          _baseItem(status: status).canBeClaimedBy('user-claimer'),
+          isTrue,
+          reason: 'expected claimable for $status',
+        );
+      }
+    });
+
     test('copyWith preserves reportedBy and updates claimedBy', () {
       final item = _baseItem().copyWith(claimedBy: 'user-claimer');
       expect(item.reportedBy, 'user-reporter');
