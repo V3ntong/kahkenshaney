@@ -173,7 +173,7 @@ class StatusHistoryEntry {
 }
 
 class LostFoundItem {
-  const LostFoundItem({
+  const   LostFoundItem({
     required this.id,
     required this.kind,
     required this.title,
@@ -191,6 +191,8 @@ class LostFoundItem {
     this.storagePath,
     this.matchedItemId,
     this.claimedBy,
+    this.resolvedByAdminId,
+    this.resolvedAt,
     this.matchScores = const [],
     this.eventDate,
     this.createdAt,
@@ -221,6 +223,12 @@ class LostFoundItem {
 
   /// The UID of the user who submitted a claim (status `pendingClaim`).
   final String? claimedBy;
+
+  /// The UID of the admin who approved/resolved the claim.
+  final String? resolvedByAdminId;
+
+  /// The timestamp when the item was resolved.
+  final DateTime? resolvedAt;
 
   /// Persisted smart-match candidates, ranked by [ItemMatchScore.score].
   final List<ItemMatchScore> matchScores;
@@ -270,6 +278,8 @@ class LostFoundItem {
     String? storagePath,
     String? matchedItemId,
     String? claimedBy,
+    String? resolvedByAdminId,
+    DateTime? resolvedAt,
     List<ItemMatchScore>? matchScores,
     DateTime? eventDate,
   }) {
@@ -291,6 +301,8 @@ class LostFoundItem {
       storagePath: storagePath ?? this.storagePath,
       matchedItemId: matchedItemId ?? this.matchedItemId,
       claimedBy: claimedBy ?? this.claimedBy,
+      resolvedByAdminId: resolvedByAdminId ?? this.resolvedByAdminId,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
       matchScores: matchScores ?? this.matchScores,
       eventDate: eventDate ?? this.eventDate,
       createdAt: createdAt,
@@ -322,6 +334,8 @@ class LostFoundItem {
       storagePath: map['storagePath'] as String?,
       matchedItemId: map['matchedItemId'] as String?,
       claimedBy: map['claimedBy'] as String?,
+      resolvedByAdminId: map['resolvedByAdminId'] as String?,
+      resolvedAt: _toDate(map['resolvedAt']),
       matchScores: ((map['matchScores'] as List?) ?? const [])
           .map((e) => ItemMatchScore.fromMap(e as Map<String, dynamic>))
           .toList(),
@@ -349,6 +363,8 @@ class LostFoundItem {
       'storagePath': storagePath,
       'matchedItemId': matchedItemId,
       'claimedBy': claimedBy,
+      'resolvedByAdminId': resolvedByAdminId,
+      'resolvedAt': resolvedAt,
       'matchScores': matchScores.map((e) => e.toMap()).toList(),
       'eventDate': eventDate,
       'createdAt': createdAt,

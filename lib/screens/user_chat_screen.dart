@@ -56,8 +56,15 @@ class _UserChatScreenState extends State<UserChatScreen> {
   Future<void> _initChat() async {
     try {
       if (_isPeerChat) {
+        final peerUid = widget.peerUid;
+        if (peerUid == null || peerUid.isEmpty) {
+          throw Exception('Cannot chat: no peer user specified.');
+        }
+        if (peerUid == widget.userId) {
+          throw Exception('Cannot chat with yourself.');
+        }
         final service = SupportChatService(adminUid: widget.adminUid);
-        final chatId = await service.ensurePeerChat(widget.userId, widget.peerUid!);
+        final chatId = await service.ensurePeerChat(widget.userId, peerUid);
         if (!mounted) return;
         setState(() {
           _chatService = service;
@@ -77,8 +84,11 @@ class _UserChatScreenState extends State<UserChatScreen> {
     } catch (e) {
       debugPrint('[UserChatScreen] _initChat error: $e');
       if (!mounted) return;
+      final message = e.toString().contains('no peer user')
+          ? 'Could not open chat: invalid user.'
+          : 'Could not open chat. Please try again.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open chat. Please try again.')),
+        SnackBar(content: Text(message)),
       );
       if (mounted) Navigator.of(context).pop();
     }
@@ -116,6 +126,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
           );
 
     future.catchError((e) {
+      debugPrint('[UserChatScreen] sendMessage error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to send message. Please try again.')),

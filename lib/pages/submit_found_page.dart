@@ -9,6 +9,7 @@ import '../data/storage/storage_service.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_button.dart';
+import '../widgets/centered_success_overlay.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/item_form_fields.dart';
 import '../widgets/photo_upload_field.dart';
@@ -119,10 +120,13 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Found item report submitted.')),
+      CenteredSuccessOverlay.show(
+        context,
+        message: 'Found item report submitted',
       );
-      Navigator.of(context).pop();
+      // Delay navigation slightly so the overlay is visible before popping.
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

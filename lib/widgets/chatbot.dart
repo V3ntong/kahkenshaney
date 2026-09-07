@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -116,9 +117,32 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() => _isTyping = false);
       await _persistHistory();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to get response. Please try again.')),
-      );
+
+      String errorMessage;
+      if (e is FirebaseFunctionsException) {
+        switch (e.code) {
+          case 'not-found':
+            errorMessage = 'Chat service is currently unavailable. Please try again later.';
+            break;
+          case 'unauthenticated':
+            errorMessage = 'Please sign in to use the assistant.';
+            break;
+          case 'resource-exhausted':
+            errorMessage = 'Too many requests. Please wait a moment.';
+            break;
+          default:
+            errorMessage = 'Failed to get response. Please try again.';
+        }
+      } else {
+        errorMessage = 'Failed to get response. Please try again.';
+      }
+
+      debugPrint('[Chatbot] Send error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
+      }
     });
   }
 

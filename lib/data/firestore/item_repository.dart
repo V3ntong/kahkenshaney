@@ -39,10 +39,13 @@ class ItemRepository {
 
   /// Public stream — only approved items, filtered by kind.
   ///
-  /// Falls back to all items if the composite index is not yet deployed.
+  /// Excludes resolved items so they no longer appear on the Lost/Found
+  /// listing pages. Falls back to all items if the composite index is
+  /// not yet deployed.
   Stream<List<LostFoundItem>> streamItems({ItemKind? kind, int? limit}) {
     Query<Map<String, dynamic>> query = _items
         .where('moderationStatus', isEqualTo: 'approved')
+        .where('status', isNotEqualTo: 'resolved')
         .orderBy('createdAt', descending: true);
     if (kind != null) {
       query = query.where('kind', isEqualTo: kind.firestoreValue);
@@ -145,6 +148,26 @@ class ItemRepository {
       (snap) => snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .where((item) => !item.status.isTerminal)
+          .toList(),
+    );
+  }
+
+  /// Resolved items stream — for the Reports page "Recently Resolved Items".
+  ///
+  /// Returns approved items with `status == 'resolved'`, sorted by
+  /// `resolvedAt` descending so the most recent resolutions appear first.
+  Stream<List<LostFoundItem>> streamResolvedItems() {
+    return _items
+        .where('moderationStatus', isEqualTo: 'approved')
+        .where('status', isEqualTo: 'resolved')
+        .orderBy('resolvedAt', descending: true)
+        .snapshots()
+        .handleError((error) {
+      debugPrint('[ItemRepository] streamResolvedItems error: $error');
+      return const Stream.empty();
+    }).map(
+      (snap) => snap.docs
+          .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .toList(),
     );
   }

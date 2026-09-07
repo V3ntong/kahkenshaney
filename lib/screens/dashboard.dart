@@ -212,30 +212,37 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    BlurRevealText(
-                      text: 'Welcome, $displayName!',
-                      duration: const Duration(milliseconds: 800),
-                      delay: const Duration(milliseconds: 200),
-                      maxBlur: 10,
-                      slideOffset: 16,
-                      style: const TextStyle(
-                        fontFamily: 'BebasNeue',
-                        fontSize: 26,
-                        color: AppColors.textPrimary,
-                        letterSpacing: 1.0,
+                    Center(
+                      child: BlurRevealText(
+                        text: 'Welcome, $displayName!',
+                        textAlign: TextAlign.center,
+                        duration: const Duration(milliseconds: 800),
+                        delay: const Duration(milliseconds: 200),
+                        maxBlur: 10,
+                        slideOffset: 16,
+                        style: const TextStyle(
+                          fontFamily: 'BebasNeue',
+                          fontSize: 26,
+                          color: AppColors.textPrimary,
+                          letterSpacing: 1.0,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TypewriterText(
-                      text: 'Tap anywhere to continue',
-                      speed: const Duration(milliseconds: 8),
-                      delay: const Duration(milliseconds: 100),
-                      showCursor: false,
-                      style: const TextStyle(
-                        fontFamily: 'LobsterTwo',
-                        color: AppColors.textTertiary,
-                        fontSize: 14,
+                    Center(
+                      child: TypewriterText(
+                        text: 'Tap anywhere to continue',
+                        textAlign: TextAlign.center,
+                        speed: const Duration(milliseconds: 8),
+                        delay: const Duration(milliseconds: 100),
+                        showCursor: false,
+                        style: const TextStyle(
+                          fontFamily: 'LobsterTwo',
+                          color: AppColors.textTertiary,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ],

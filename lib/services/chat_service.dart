@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -51,6 +52,7 @@ class ChatService {
   final FirebaseFunctions? _functions;
 
   static const String _collection = 'chatbot_history';
+  static const String _region = 'us-central1';
 
   /// The in-memory working copy of the conversation. Kept in sync with
   /// Firestore so the UI can render immediately while async persistence
@@ -128,7 +130,7 @@ class ChatService {
       addUserMessage(trimmed);
     }
 
-    final fn = _functions ?? FirebaseFunctions.instance;
+    final fn = _functions ?? _defaultFunctions();
 
     try {
       final callable = fn.httpsCallable('kashtep');
@@ -146,12 +148,19 @@ class ChatService {
       }
       return reply;
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[ChatService] Cloud Function error: $e');
+      debugPrint('[ChatService] Cloud Function error: ${e.code} — ${e.message}');
       return _userFacingError(e.code);
     } catch (e) {
       debugPrint('[ChatService] Unexpected error: $e');
       return 'The AI assistant could not generate a response. Please try again.';
     }
+  }
+
+  FirebaseFunctions _defaultFunctions() {
+    if (Firebase.apps.isEmpty) {
+      throw Exception('Firebase is not configured on this platform.');
+    }
+    return FirebaseFunctions.instanceFor(region: _region);
   }
 
   String _userFacingError(String? code) {
@@ -165,7 +174,9 @@ class ChatService {
       case 'deadline-exceeded':
         return 'The assistant is taking too long. Please try again.';
       case 'not-found':
-        return 'The chat service is not available right now.';
+        return 'The chat service is currently unavailable. Please try again later.';
+      case 'internal':
+        return 'Something went wrong on our end. Please try again.';
       default:
         return 'The AI assistant could not generate a response. Please try again.';
     }

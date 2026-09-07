@@ -95,6 +95,12 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
     };
     if (matchedItemId != null) updates['matchedItemId'] = matchedItemId;
 
+    // When resolving, store the admin who resolved and the timestamp.
+    if (newStatus == ItemStatus.resolved) {
+      updates['resolvedByAdminId'] = widget.adminUid;
+      updates['resolvedAt'] = DateTime.now();
+    }
+
     try {
       await _repo.updateItemFields(item.id, updates);
       await _notifService.notifyStatusChange(item: item, newStatus: newStatus);

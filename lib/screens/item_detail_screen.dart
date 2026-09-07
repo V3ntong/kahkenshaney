@@ -11,6 +11,7 @@ import '../services/claim_api.dart';
 import '../services/match_api.dart';
 import '../services/resolve_api.dart';
 import '../theme/app_theme.dart';
+import '../widgets/centered_success_overlay.dart';
 import '../widgets/item_grid_card.dart';
 import 'user_chat_screen.dart';
 
@@ -523,8 +524,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       await ClaimApi().claimItem(item.id);
       if (!mounted) return;
       setState(() => _isClaiming = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Claim submitted for review')),
+      CenteredSuccessOverlay.show(
+        context,
+        message: 'Claim submitted for review',
       );
 
       // Fire-and-forget: notify the item reporter + admin.
