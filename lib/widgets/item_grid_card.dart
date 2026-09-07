@@ -123,7 +123,7 @@ class ItemGridCard extends StatelessWidget {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.max,
                   children: [
                     // Item name
                     Text(
@@ -134,18 +134,21 @@ class ItemGridCard extends StatelessWidget {
                     ),
 
                     // Description (truncated)
-                    if (item.description.isNotEmpty) ...[
-                      const SizedBox(height: AppTokens.space3),
-                      Text(
-                        item.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTokens.bodySmall.copyWith(
-                          fontSize: 12,
-                          height: 1.3,
+                    if (item.description.isNotEmpty)
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: AppTokens.space3),
+                          child: Text(
+                            item.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTokens.bodySmall.copyWith(
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
+                          ),
                         ),
                       ),
-                    ],
 
                     const SizedBox(height: AppTokens.space6),
 
@@ -174,8 +177,11 @@ class ItemGridCard extends StatelessWidget {
 
                     const SizedBox(height: AppTokens.space4),
 
-                    // Status pill
-                    StatusBadge.fromItemStatus(item.status),
+                    // Status pill — pinned to bottom via parent Column max
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: StatusBadge.fromItemStatus(item.status),
+                    ),
                   ],
                 ),
               ),

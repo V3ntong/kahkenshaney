@@ -40,12 +40,17 @@ class ItemRepository {
   /// Public stream — only approved items, filtered by kind.
   ///
   /// Excludes resolved items so they no longer appear on the Lost/Found
-  /// listing pages. Falls back to all items if the composite index is
-  /// not yet deployed.
+  /// listing pages. Uses [whereIn] on all non-resolved statuses instead of
+  /// `isNotEqualTo` to avoid requiring a composite index for the inequality +
+  /// orderBy combination.
   Stream<List<LostFoundItem>> streamItems({ItemKind? kind, int? limit}) {
+    final activeStatuses = ItemStatus.values
+        .where((s) => s != ItemStatus.resolved)
+        .map((s) => s.firestoreValue)
+        .toList();
     Query<Map<String, dynamic>> query = _items
         .where('moderationStatus', isEqualTo: 'approved')
-        .where('status', isNotEqualTo: 'resolved')
+        .where('status', whereIn: activeStatuses)
         .orderBy('createdAt', descending: true);
     if (kind != null) {
       query = query.where('kind', isEqualTo: kind.firestoreValue);

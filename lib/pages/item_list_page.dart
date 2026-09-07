@@ -379,7 +379,7 @@ class _ItemCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _StatusPill(status: item.status),
+          Flexible(child: _StatusPill(status: item.status)),
         ],
       ),
     );

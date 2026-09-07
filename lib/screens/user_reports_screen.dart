@@ -189,7 +189,7 @@ class _ReportCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             // Moderation status badge
-            _ModerationBadge(status: item.moderationStatus),
+            Flexible(child: _ModerationBadge(status: item.moderationStatus)),
           ],
         ),
       ),

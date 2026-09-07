@@ -98,72 +98,74 @@ class _HomeFeedState extends State<HomeFeed> {
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.person_rounded, color: AppColors.primary),
-              title: const Text('Profile'),
-              subtitle: const Text('View account details'),
-              onTap: () {
-                Navigator.pop(context);
-                if (widget.onProfile != null) {
-                  widget.onProfile!();
-                } else {
-                  _comingSoon('Profile');
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.lock_reset_rounded, color: AppColors.info),
-              title: const Text('Change Password'),
-              subtitle: const Text('Update your account password'),
-              onTap: () {
-                Navigator.pop(context);
-                widget.onChangePassword?.call();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
-              title: const Text('My Reports'),
-              subtitle: const Text('Track your submitted reports'),
-              onTap: () {
-                Navigator.pop(context);
-                if (widget.ownerUid != null) {
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person_rounded, color: AppColors.primary),
+                title: const Text('Profile'),
+                subtitle: const Text('View account details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (widget.onProfile != null) {
+                    widget.onProfile!();
+                  } else {
+                    _comingSoon('Profile');
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.lock_reset_rounded, color: AppColors.info),
+                title: const Text('Change Password'),
+                subtitle: const Text('Update your account password'),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.onChangePassword?.call();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+                title: const Text('My Reports'),
+                subtitle: const Text('Track your submitted reports'),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (widget.ownerUid != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UserReportsScreen(ownerUid: widget.ownerUid!),
+                      ),
+                    );
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.settings_outlined, color: AppColors.textSecondary),
+                title: const Text('Settings'),
+                subtitle: const Text('App preferences and account'),
+                onTap: () {
+                  Navigator.pop(context);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => UserReportsScreen(ownerUid: widget.ownerUid!),
-                    ),
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
                   );
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined, color: AppColors.textSecondary),
-              title: const Text('Settings'),
-              subtitle: const Text('App preferences and account'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                );
-              },
-            ),
-            const Divider(height: 1, color: AppColors.border),
-            ListTile(
-              leading: const Icon(Icons.logout_rounded, color: AppColors.error),
-              title: const Text('Log out'),
-              subtitle: const Text('Sign out of your account'),
-              onTap: () {
-                Navigator.pop(context);
-                _confirmSignOut();
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+                },
+              ),
+              const Divider(height: 1, color: AppColors.border),
+              ListTile(
+                leading: const Icon(Icons.logout_rounded, color: AppColors.error),
+                title: const Text('Log out'),
+                subtitle: const Text('Sign out of your account'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmSignOut();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

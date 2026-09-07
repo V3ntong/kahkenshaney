@@ -313,18 +313,22 @@ class _ResolvedItemCard extends StatelessWidget {
                           ),
                           if (item.category != null && item.category!.isNotEmpty) ...[
                             const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primarySurface,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                item.category!,
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primarySurface,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  item.category!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.primary,
+                                  ),
                                 ),
                               ),
                             ),
@@ -396,9 +400,13 @@ class _ResolvedItemCard extends StatelessWidget {
                 children: [
                   const Icon(Icons.schedule_rounded, size: 14, color: AppColors.textTertiary),
                   const SizedBox(width: 4),
-                  Text(
-                    'Resolved ${_formatDate(item.resolvedAt!)}',
-                    style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                  Expanded(
+                    child: Text(
+                      'Resolved ${_formatDate(item.resolvedAt!)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                    ),
                   ),
                 ],
               ),
