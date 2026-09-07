@@ -143,7 +143,10 @@ class _HomePageState extends State<HomePage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ItemDetailScreen(item: item),
+            builder: (_) => ItemDetailScreen(
+              item: item,
+              heroTagPrefix: 'home',
+            ),
           ),
         );
       }

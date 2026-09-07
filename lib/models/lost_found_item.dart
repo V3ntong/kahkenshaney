@@ -173,7 +173,7 @@ class StatusHistoryEntry {
 }
 
 class LostFoundItem {
-  const   LostFoundItem({
+  const LostFoundItem({
     required this.id,
     required this.kind,
     required this.title,
@@ -193,6 +193,8 @@ class LostFoundItem {
     this.claimedBy,
     this.resolvedByAdminId,
     this.resolvedAt,
+    this.pickupDateTime,
+    this.pickupLocation,
     this.matchScores = const [],
     this.eventDate,
     this.createdAt,
@@ -229,6 +231,12 @@ class LostFoundItem {
 
   /// The timestamp when the item was resolved.
   final DateTime? resolvedAt;
+
+  /// When the item can be picked up (null = available now).
+  final DateTime? pickupDateTime;
+
+  /// Where the item can be picked up (null = use storageLocation).
+  final String? pickupLocation;
 
   /// Persisted smart-match candidates, ranked by [ItemMatchScore.score].
   final List<ItemMatchScore> matchScores;
@@ -280,6 +288,8 @@ class LostFoundItem {
     String? claimedBy,
     String? resolvedByAdminId,
     DateTime? resolvedAt,
+    DateTime? pickupDateTime,
+    String? pickupLocation,
     List<ItemMatchScore>? matchScores,
     DateTime? eventDate,
   }) {
@@ -303,6 +313,8 @@ class LostFoundItem {
       claimedBy: claimedBy ?? this.claimedBy,
       resolvedByAdminId: resolvedByAdminId ?? this.resolvedByAdminId,
       resolvedAt: resolvedAt ?? this.resolvedAt,
+      pickupDateTime: pickupDateTime ?? this.pickupDateTime,
+      pickupLocation: pickupLocation ?? this.pickupLocation,
       matchScores: matchScores ?? this.matchScores,
       eventDate: eventDate ?? this.eventDate,
       createdAt: createdAt,
@@ -336,6 +348,8 @@ class LostFoundItem {
       claimedBy: map['claimedBy'] as String?,
       resolvedByAdminId: map['resolvedByAdminId'] as String?,
       resolvedAt: _toDate(map['resolvedAt']),
+      pickupDateTime: _toDate(map['pickupDateTime']),
+      pickupLocation: map['pickupLocation'] as String?,
       matchScores: ((map['matchScores'] as List?) ?? const [])
           .map((e) => ItemMatchScore.fromMap(e as Map<String, dynamic>))
           .toList(),
@@ -355,8 +369,8 @@ class LostFoundItem {
       'category': category,
       'location': location,
       'storageLocation': storageLocation,
-      'status': status.firestoreValue,
-      'moderationStatus': moderationStatus.firestoreValue,
+      'status': status.name,
+      'moderationStatus': moderationStatus.name,
       'statusHistory': statusHistory.map((e) => e.toMap()).toList(),
       'media': media,
       'imageUrl': imageUrl,
@@ -364,11 +378,13 @@ class LostFoundItem {
       'matchedItemId': matchedItemId,
       'claimedBy': claimedBy,
       'resolvedByAdminId': resolvedByAdminId,
-      'resolvedAt': resolvedAt,
+      'resolvedAt': resolvedAt?.toIso8601String(),
+      'pickupDateTime': pickupDateTime?.toIso8601String(),
+      'pickupLocation': pickupLocation,
       'matchScores': matchScores.map((e) => e.toMap()).toList(),
-      'eventDate': eventDate,
-      'createdAt': createdAt,
-      'updatedAt': updatedAt,
+      'eventDate': eventDate?.toIso8601String(),
+      'createdAt': createdAt?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 

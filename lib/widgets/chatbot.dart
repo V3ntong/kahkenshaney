@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -120,9 +121,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
       String errorMessage;
       if (e is FirebaseFunctionsException) {
+        // Check if App Check is the likely cause of a not-found error.
+        bool appCheckOk = true;
+        try {
+          final token = await FirebaseAppCheck.instance.getToken(false);
+          appCheckOk = token != null && token.isNotEmpty;
+        } catch (_) {
+          appCheckOk = false;
+        }
+
         switch (e.code) {
           case 'not-found':
-            errorMessage = 'Chat service is currently unavailable. Please try again later.';
+            errorMessage = appCheckOk
+                ? 'Chat service is currently unavailable. Please try again later.'
+                : 'Unable to verify app security. Please update the app and try again.';
             break;
           case 'unauthenticated':
             errorMessage = 'Please sign in to use the assistant.';

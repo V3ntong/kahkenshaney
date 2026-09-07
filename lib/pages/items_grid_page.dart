@@ -131,10 +131,14 @@ class ItemsGridPage extends StatelessWidget {
                       offset: 22,
                       child: ItemGridCard(
                         item: items[index],
+                        heroTagPrefix: kind.name,
                         onTap: () => Navigator.push(
                           context,
                           FadeSlideRoute(
-                            builder: (_) => ItemDetailScreen(item: items[index]),
+                            builder: (_) => ItemDetailScreen(
+                              item: items[index],
+                              heroTagPrefix: kind.name,
+                            ),
                           ),
                         ),
                       ),

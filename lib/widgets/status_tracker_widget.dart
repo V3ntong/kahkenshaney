@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import '../theme/app_tokens.dart';
 
 /// A horizontal stepper UI showing the item status pipeline:
 /// Submitted → Pending Verification → Verified → Matched → Pending Claim →
@@ -53,7 +54,7 @@ class StatusTrackerWidget extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildStepper(currentIndex),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTokens.space12),
         _buildHistory(),
       ],
     );
@@ -100,7 +101,7 @@ class StatusTrackerWidget extends StatelessWidget {
                         : AppColors.textTertiary,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppTokens.space6),
                 // Label
                 Text(
                   status.shortLabel,
@@ -127,27 +128,29 @@ class StatusTrackerWidget extends StatelessWidget {
   }
 
   Widget _buildCompact(int currentIndex) {
+    final (fg, bg) = AppTokens.badgeColorsForStatus(
+      _pipeline[currentIndex].name,
+    );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.space10,
+        vertical: AppTokens.space6,
+      ),
       decoration: BoxDecoration(
-        color: _statusColor(currentStatus).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: bg,
+        borderRadius: BorderRadius.circular(AppTokens.radiusSm),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            _icons[currentIndex],
-            size: 14,
-            color: _statusColor(currentStatus),
-          ),
-          const SizedBox(width: 6),
+          Icon(_icons[currentIndex], size: 14, color: fg),
+          const SizedBox(width: AppTokens.space6),
           Text(
             currentStatus.label,
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: _statusColor(currentStatus),
+              color: fg,
             ),
           ),
         ],
@@ -161,40 +164,34 @@ class StatusTrackerWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Status History',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 6),
+        const Text('Status History', style: AppTokens.labelSmall),
+        const SizedBox(height: AppTokens.space6),
         ...statusHistory.reversed.map((entry) {
           final status = ItemStatusX.fromFirestore(entry.status);
+          final (fg, _) = AppTokens.badgeColorsForStatus(status.name);
           return Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: AppTokens.space4),
             child: Row(
               children: [
                 Container(
                   width: 6,
                   height: 6,
                   decoration: BoxDecoration(
-                    color: _statusColor(status),
+                    color: fg,
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppTokens.space8),
                 Text(
                   status.label,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: _statusColor(status),
+                    color: fg,
                   ),
                 ),
                 if (entry.changedAt != null) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppTokens.space8),
                   Text(
                     _formatDate(entry.changedAt!),
                     style: const TextStyle(
@@ -211,19 +208,8 @@ class StatusTrackerWidget extends StatelessWidget {
     );
   }
 
-  Color _statusColor(ItemStatus status) => switch (status) {
-        ItemStatus.open => AppColors.info,
-        ItemStatus.pendingVerification => AppColors.warning,
-        ItemStatus.verified => AppColors.success,
-        ItemStatus.matched => AppColors.primary,
-        ItemStatus.pendingClaim => AppColors.warning,
-        ItemStatus.claimed => AppColors.success,
-        ItemStatus.closed => AppColors.textTertiary,
-        ItemStatus.resolved => AppColors.success,
-      };
-
   String _formatDate(DateTime date) {
-    final months = [
+    const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];

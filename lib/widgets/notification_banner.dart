@@ -87,7 +87,10 @@ class _NotificationBannerHostState extends State<NotificationBannerHost> {
         final item = await ItemRepository().getItem(relatedItemId);
         if (item != null && mounted) {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item)),
+            MaterialPageRoute(builder: (_) => ItemDetailScreen(
+              item: item,
+              heroTagPrefix: 'notif',
+            )),
           );
           return;
         }
@@ -114,7 +117,10 @@ class _NotificationBannerHostState extends State<NotificationBannerHost> {
       final item = await ItemRepository().getItem(itemId);
       if (item != null && mounted) {
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item)),
+          MaterialPageRoute(builder: (_) => ItemDetailScreen(
+            item: item,
+            heroTagPrefix: 'notif',
+          )),
         );
       }
     } catch (e) {

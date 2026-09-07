@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_tokens.dart';
+import 'status_badge.dart';
 
 enum ReportStatus { lost, found, matched }
 
@@ -9,18 +11,6 @@ extension ReportStatusX on ReportStatus {
         ReportStatus.lost => 'LOST',
         ReportStatus.found => 'FOUND',
         ReportStatus.matched => 'MATCHED',
-      };
-
-  Color get color => switch (this) {
-        ReportStatus.lost => AppColors.error,
-        ReportStatus.found => AppColors.success,
-        ReportStatus.matched => AppColors.primary,
-      };
-
-  Color get background => switch (this) {
-        ReportStatus.lost => AppColors.errorSurface,
-        ReportStatus.found => AppColors.successSurface,
-        ReportStatus.matched => AppColors.infoSurface,
       };
 }
 
@@ -50,7 +40,7 @@ class ReportTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.space10),
       child: Row(
         children: [
           Container(
@@ -58,11 +48,11 @@ class ReportTile extends StatelessWidget {
             height: 48,
             decoration: BoxDecoration(
               color: report.tint,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppTokens.radiusMd),
             ),
             child: Icon(report.icon, color: AppColors.primary, size: 22),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppTokens.space12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,54 +61,23 @@ class ReportTile extends StatelessWidget {
                   report.itemName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                  ),
+                  style: AppTokens.labelLarge,
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: AppTokens.space3),
                 Text(
                   '${report.location} • ${report.timeAgo}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: AppTokens.labelSmall.copyWith(
                     color: AppColors.textTertiary,
-                    fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          _StatusBadge(status: report.status),
+          const SizedBox(width: AppTokens.space8),
+          StatusBadge.fromReportType(report.status.name),
         ],
-      ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
-
-  final ReportStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: status.background,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        status.label,
-        style: TextStyle(
-          color: status.color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -149,10 +150,30 @@ class ChatService {
       return reply;
     } on FirebaseFunctionsException catch (e) {
       debugPrint('[ChatService] Cloud Function error: ${e.code} — ${e.message}');
+
+      // Check if the error is likely caused by App Check enforcement.
+      // When App Check is enforced on the backend but not activated on the
+      // client, the SDK may surface a NOT_FOUND error instead of a clear
+      // "app not verified" message.
+      final appCheckActive = await _isAppCheckActive();
+      if (!appCheckActive && e.code == 'not-found') {
+        return 'Unable to verify app security. Please update the app and try again.';
+      }
+
       return _userFacingError(e.code);
     } catch (e) {
       debugPrint('[ChatService] Unexpected error: $e');
       return 'The AI assistant could not generate a response. Please try again.';
+    }
+  }
+
+  /// Checks whether App Check was successfully activated at startup.
+  Future<bool> _isAppCheckActive() async {
+    try {
+      final token = await FirebaseAppCheck.instance.getToken(false);
+      return token != null && token.isNotEmpty;
+    } catch (e) {
+      return false;
     }
   }
 

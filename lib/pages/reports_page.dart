@@ -205,7 +205,10 @@ class _ReportsPageState extends State<ReportsPage> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => ItemDetailScreen(item: item),
+                            builder: (_) => ItemDetailScreen(
+                              item: item,
+                              heroTagPrefix: 'reports',
+                            ),
                           ),
                         );
                       },

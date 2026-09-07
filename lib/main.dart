@@ -1,4 +1,6 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -25,6 +27,24 @@ void main() async {
     firebaseReady = true;
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
+  }
+
+  // Activate App Check so Cloud Functions and Firestore rules that enforce
+  // App Check can verify this client. Without this, callable functions
+  // may return NOT_FOUND instead of a clear "unauthenticated" error.
+  if (firebaseReady) {
+    try {
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: kReleaseMode
+            ? const AndroidPlayIntegrityProvider()
+            : const AndroidDebugProvider(),
+      );
+      debugPrint('App Check activated successfully');
+    } catch (e) {
+      // Log distinctly so App Check misconfigurations are immediately
+      // obvious in logs rather than surfacing as unrelated not-found errors.
+      debugPrint('[AppCheck] Activation failed: $e');
+    }
   }
 
   GoogleFonts.config.allowRuntimeFetching = false;

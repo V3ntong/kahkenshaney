@@ -53,15 +53,16 @@ class ItemRepository {
     if (limit != null) {
       query = query.limit(limit);
     }
-    return query.snapshots().handleError((error) {
-      debugPrint('[ItemRepository] streamItems error: $error');
-      // Fallback: return all items if index is missing
-      return const Stream.empty();
-    }).map(
+    return query.snapshots().map(
       (snap) => snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .toList(),
-    );
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamItems error: $error');
+      // Emit an empty list instead of Stream.empty() so the StreamBuilder
+      // resolves to the loaded state rather than staying in waiting forever.
+      return <LostFoundItem>[];
+    });
   }
 
   /// Public stream with client-side search.
@@ -88,10 +89,7 @@ class ItemRepository {
     return _items
         .where('ownerUid', isEqualTo: ownerUid)
         .snapshots()
-        .handleError((error) {
-      debugPrint('[ItemRepository] streamUserItems error: $error');
-      return const Stream.empty();
-    }).map((snap) {
+        .map((snap) {
       final list = snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .toList();
@@ -101,6 +99,9 @@ class ItemRepository {
         return bTime.compareTo(aTime);
       });
       return list;
+    }).handleError((error) {
+      debugPrint('[ItemRepository] streamUserItems error: $error');
+      return <LostFoundItem>[];
     });
   }
 
@@ -110,14 +111,14 @@ class ItemRepository {
         .where('moderationStatus', isEqualTo: 'pending')
         .orderBy('createdAt')
         .snapshots()
-        .handleError((error) {
-      debugPrint('[ItemRepository] streamPendingItems error: $error');
-      return const Stream.empty();
-    }).map(
+        .map(
       (snap) => snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .toList(),
-    );
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamPendingItems error: $error');
+      return <LostFoundItem>[];
+    });
   }
 
   /// Admin: all items (any moderation status).
@@ -125,14 +126,14 @@ class ItemRepository {
     return _items
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .handleError((error) {
+        .map(
+      (snap) => snap.docs
+          .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
+          .toList(),
+    ).handleError((error) {
       debugPrint('[ItemRepository] streamAllItemsForAdmin error: $error');
-      return const Stream.empty();
-    }).map(
-          (snap) => snap.docs
-              .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
-              .toList(),
-        );
+      return <LostFoundItem>[];
+    });
   }
 
   /// Admin: approved items that are NOT yet resolved/claimed/closed.
@@ -141,15 +142,15 @@ class ItemRepository {
         .where('moderationStatus', isEqualTo: 'approved')
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .handleError((error) {
-      debugPrint('[ItemRepository] streamNonTerminalItems error: $error');
-      return const Stream.empty();
-    }).map(
+        .map(
       (snap) => snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .where((item) => !item.status.isTerminal)
           .toList(),
-    );
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamNonTerminalItems error: $error');
+      return <LostFoundItem>[];
+    });
   }
 
   /// Resolved items stream — for the Reports page "Recently Resolved Items".
@@ -162,14 +163,14 @@ class ItemRepository {
         .where('status', isEqualTo: 'resolved')
         .orderBy('resolvedAt', descending: true)
         .snapshots()
-        .handleError((error) {
-      debugPrint('[ItemRepository] streamResolvedItems error: $error');
-      return const Stream.empty();
-    }).map(
+        .map(
       (snap) => snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .toList(),
-    );
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamResolvedItems error: $error');
+      return <LostFoundItem>[];
+    });
   }
 
   /// Update item fields.
@@ -202,15 +203,15 @@ class ItemRepository {
         .where('category', isEqualTo: category)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .handleError((error) {
-      debugPrint('[ItemRepository] streamPotentialMatches error: $error');
-      return const Stream.empty();
-    }).map(
+        .map(
       (snap) => snap.docs
           .map((doc) => LostFoundItem.fromMap(doc.id, doc.data()))
           .where((item) => item.id != currentItemId && !item.status.isTerminal)
           .toList(),
-    );
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamPotentialMatches error: $error');
+      return <LostFoundItem>[];
+    });
   }
 
   /// Delete an item.

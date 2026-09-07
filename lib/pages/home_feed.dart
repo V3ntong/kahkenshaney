@@ -273,7 +273,10 @@ class _HomeFeedState extends State<HomeFeed> {
         onItemTap: (item) {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => ItemDetailScreen(item: item)),
+            MaterialPageRoute(builder: (_) => ItemDetailScreen(
+              item: item,
+              heroTagPrefix: 'recent',
+            )),
           );
         },
       ),
@@ -374,13 +377,15 @@ class _PrimaryActions extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        _ActionPill(
-          label: 'AI Scan',
-          icon: Icons.auto_awesome_rounded,
-          color: AppColors.primary,
-          surface: AppColors.primarySurface,
-          onTap: onAiScan,
-          compact: true,
+        Flexible(
+          child: _ActionPill(
+            label: 'AI Scan',
+            icon: Icons.auto_awesome_rounded,
+            color: AppColors.primary,
+            surface: AppColors.primarySurface,
+            onTap: onAiScan,
+            compact: true,
+          ),
         ),
       ],
     );
@@ -639,9 +644,10 @@ class _RecentlyReportedSection extends StatelessWidget {
                         offset: 20,
                         child: SizedBox(
                           width: 150,
-                          child: ItemGridCard(
-                            item: recent[index],
-                            onTap: () => onItemTap(recent[index]),
+                        child: ItemGridCard(
+                          item: recent[index],
+                          heroTagPrefix: 'recent',
+                          onTap: () => onItemTap(recent[index]),
                           ),
                         ),
                       );

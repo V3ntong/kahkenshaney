@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_tokens.dart';
+
 /// Premium color palette — blue core with sky, mint, amber accents.
 class AppColors {
   AppColors._();
@@ -113,25 +115,31 @@ ThemeData buildAppTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.space16,
+        vertical: AppTokens.space16,
+      ),
+      labelStyle: const TextStyle(
+        color: AppColors.textSecondary,
+        fontSize: 14,
+      ),
       hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 14),
       prefixIconColor: AppColors.textTertiary,
       suffixIconColor: AppColors.textTertiary,
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         borderSide: const BorderSide(color: AppColors.border),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         borderSide: const BorderSide(color: AppColors.primary, width: 1.6),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         borderSide: const BorderSide(color: AppColors.error),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
         borderSide: const BorderSide(color: AppColors.error, width: 1.6),
       ),
     ),
@@ -141,6 +149,13 @@ ThemeData buildAppTheme() {
       style: TextButton.styleFrom(
         foregroundColor: AppColors.primary,
         textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space16,
+          vertical: AppTokens.space8,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        ),
       ),
     ),
 
@@ -150,9 +165,47 @@ ThemeData buildAppTheme() {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space24,
+          vertical: AppTokens.space16,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        ),
+        textStyle: AppTokens.bodyStrong.copyWith(color: Colors.white),
+      ),
+    ),
+
+    // ── Filled Button ─────────────────────────────────
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space24,
+          vertical: AppTokens.space12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        ),
+        textStyle: AppTokens.bodyStrong.copyWith(color: Colors.white),
+      ),
+    ),
+
+    // ── Outlined Button ───────────────────────────────
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        side: const BorderSide(color: AppColors.primary, width: 1.2),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space24,
+          vertical: AppTokens.space12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        ),
+        textStyle: AppTokens.bodyStrong.copyWith(color: AppColors.primary),
       ),
     ),
 
@@ -161,10 +214,30 @@ ThemeData buildAppTheme() {
       color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
         side: const BorderSide(color: AppColors.cardBorder),
       ),
       margin: EdgeInsets.zero,
+    ),
+
+    // ── Chip ──────────────────────────────────────────
+    chipTheme: ChipThemeData(
+      backgroundColor: AppColors.surfaceVariant,
+      selectedColor: AppColors.primarySurface,
+      disabledColor: AppColors.surfaceVariant,
+      labelStyle: AppTokens.labelSmall.copyWith(color: AppColors.textPrimary),
+      secondaryLabelStyle: AppTokens.labelSmall.copyWith(
+        color: AppColors.textPrimary,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.space12,
+        vertical: AppTokens.space6,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+        side: const BorderSide(color: AppColors.cardBorder),
+      ),
+      side: const BorderSide(color: AppColors.cardBorder),
     ),
 
     // ── SnackBar ──────────────────────────────────────
@@ -172,7 +245,9 @@ ThemeData buildAppTheme() {
       behavior: SnackBarBehavior.floating,
       backgroundColor: AppColors.textPrimary,
       contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+      ),
     ),
 
     // ── Divider ───────────────────────────────────────
@@ -180,6 +255,14 @@ ThemeData buildAppTheme() {
       color: AppColors.divider,
       thickness: 1,
       space: 0,
+    ),
+
+    // ── ListTile ──────────────────────────────────────
+    listTileTheme: const ListTileThemeData(
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: AppTokens.space16,
+        vertical: AppTokens.space4,
+      ),
     ),
   );
 }

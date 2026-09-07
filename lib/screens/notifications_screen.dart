@@ -213,6 +213,7 @@ class _NotificationTile extends StatelessWidget {
         'status_verified' => Icons.verified_rounded,
         'status_matched' => Icons.swap_horiz_rounded,
         'status_claimed' => Icons.check_circle_outline_rounded,
+        'status_resolved' => Icons.inventory_2_rounded,
         _ => Icons.notifications_none_rounded,
       };
 
@@ -222,6 +223,7 @@ class _NotificationTile extends StatelessWidget {
         'status_verified' => AppColors.success,
         'status_matched' => AppColors.primary,
         'status_claimed' => AppColors.success,
+        'status_resolved' => AppColors.success,
         _ => AppColors.info,
       };
 

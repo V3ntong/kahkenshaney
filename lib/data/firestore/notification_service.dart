@@ -186,7 +186,7 @@ class NotificationService {
         ),
       ItemStatus.resolved => (
           'Item Resolved',
-          'Your ${item.kind.name} item "${item.title}" has been resolved.',
+          _resolvedBody(item),
         ),
       ItemStatus.open => (
           'Item Submitted',
@@ -201,6 +201,23 @@ class NotificationService {
       type: 'status_${newStatus.name}',
       relatedItemId: item.id,
     );
+  }
+
+  /// Builds a pickup-aware body for resolved notifications.
+  static String _resolvedBody(LostFoundItem item) {
+    var body =
+        'Your ${item.kind.name} item "${item.title}" has been resolved.';
+    final parts = <String>[];
+    if (item.pickupDateTime != null) {
+      parts.add('on ${item.pickupDateTime}');
+    }
+    if (item.pickupLocation != null && item.pickupLocation!.isNotEmpty) {
+      parts.add('at ${item.pickupLocation}');
+    }
+    if (parts.isNotEmpty) {
+      body += ' You can pick it up ${parts.join(' ')}.';
+    }
+    return body;
   }
 
   /// Notifies the admin when a new report is submitted.

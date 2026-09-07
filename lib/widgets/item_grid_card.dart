@@ -2,17 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import '../theme/app_tokens.dart';
 import 'glass_panel.dart';
+import 'status_badge.dart';
 
 /// Reusable grid card for displaying a lost or found item.
 ///
 /// Shows the item image (or a placeholder), name, description, and location.
 /// Used in both the Lost and Found 2-column grid layouts.
+///
+/// [heroTagPrefix] namespaces the Hero tag so the same item rendered in
+/// multiple sections (e.g. "Recently Reported" + Lost tab) doesn't cause
+/// a duplicate Hero tag collision.
 class ItemGridCard extends StatelessWidget {
-  const ItemGridCard({super.key, required this.item, this.onTap});
+  const ItemGridCard({
+    super.key,
+    required this.item,
+    this.onTap,
+    this.heroTagPrefix = 'item',
+  });
 
   final LostFoundItem item;
   final VoidCallback? onTap;
+  final String heroTagPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +45,9 @@ class ItemGridCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
           border: Border.all(color: AppColors.cardBorder),
-          boxShadow: AppColors.softShadow,
+          boxShadow: AppTokens.shadowSm,
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -47,24 +59,27 @@ class ItemGridCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   item.media.isNotEmpty
-                      ? Image.network(
-                          item.media.first,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (context, child, progress) {
-                            if (progress == null) return child;
-                            return Container(
-                              color: accentSurface,
-                              alignment: Alignment.center,
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.primary,
-                              ),
-                            );
-                          },
-                          errorBuilder: (_, _, _) => _Placeholder(
-                            accent: accent,
-                            surface: accentSurface,
-                            isLost: isLost,
+                      ? Hero(
+                          tag: '${heroTagPrefix}_${item.id}',
+                          child: Image.network(
+                            item.media.first,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                color: accentSurface,
+                                alignment: Alignment.center,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.primary,
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, _, _) => _Placeholder(
+                              accent: accent,
+                              surface: accentSurface,
+                              isLost: isLost,
+                            ),
                           ),
                         )
                       : _Placeholder(
@@ -73,22 +88,20 @@ class ItemGridCard extends StatelessWidget {
                           isLost: isLost,
                         ),
                   Positioned(
-                    top: 8,
-                    left: 8,
+                    top: AppTokens.space8,
+                    left: AppTokens.space8,
                     child: GlassPanel(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+                          horizontal: AppTokens.space8,
+                          vertical: AppTokens.space4,
                         ),
                         child: Text(
                           item.category ??
                               (isLost ? 'Lost item' : 'Found item'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                          style: AppTokens.labelTiny.copyWith(
                             color: AppColors.textPrimary,
                           ),
                         ),
@@ -100,69 +113,71 @@ class ItemGridCard extends StatelessWidget {
             ),
 
             // ── Details ────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Item name
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-
-                  // Description (truncated)
-                  if (item.description.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTokens.space12,
+                  AppTokens.space10,
+                  AppTokens.space12,
+                  AppTokens.space12,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Item name
                     Text(
-                      item.description,
-                      maxLines: 2,
+                      item.title,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        height: 1.3,
-                      ),
+                      style: AppTokens.labelBold,
                     ),
-                  ],
 
-                  const SizedBox(height: 6),
-
-                  // Location + time
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.place_outlined,
-                        size: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        child: Text(
-                          location.isNotEmpty ? location : 'No location',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textTertiary,
-                          ),
+                    // Description (truncated)
+                    if (item.description.isNotEmpty) ...[
+                      const SizedBox(height: AppTokens.space3),
+                      Text(
+                        item.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTokens.bodySmall.copyWith(
+                          fontSize: 12,
+                          height: 1.3,
                         ),
                       ),
                     ],
-                  ),
 
-                  const SizedBox(height: 4),
+                    const SizedBox(height: AppTokens.space6),
 
-                  // Status pill
-                  _StatusPill(status: item.status),
-                ],
+                    // Location + time
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.place_outlined,
+                          size: 12,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: AppTokens.space3),
+                        Expanded(
+                          child: Text(
+                            location.isNotEmpty ? location : 'No location',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTokens.labelSmall.copyWith(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: AppTokens.space4),
+
+                    // Status pill
+                    StatusBadge.fromItemStatus(item.status),
+                  ],
+                ),
               ),
             ),
           ],
@@ -192,70 +207,6 @@ class _Placeholder extends StatelessWidget {
           isLost ? Icons.fmd_bad_rounded : Icons.inventory_2_rounded,
           size: 40,
           color: accent.withValues(alpha: 0.5),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final ItemStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color, bg) = switch (status) {
-      ItemStatus.open => ('OPEN', AppColors.success, AppColors.successSurface),
-      ItemStatus.pendingVerification => (
-        'PENDING',
-        AppColors.warning,
-        AppColors.warningSurface,
-      ),
-      ItemStatus.verified => (
-        'VERIFIED',
-        AppColors.info,
-        AppColors.infoSurface,
-      ),
-      ItemStatus.matched => (
-        'MATCHED',
-        AppColors.primary,
-        AppColors.infoSurface,
-      ),
-      ItemStatus.pendingClaim => (
-        'CLAIM PENDING',
-        AppColors.warning,
-        AppColors.warningSurface,
-      ),
-      ItemStatus.claimed => (
-        'CLAIMED',
-        AppColors.success,
-        AppColors.successSurface,
-      ),
-      ItemStatus.closed => (
-        'CLOSED',
-        AppColors.textTertiary,
-        AppColors.surfaceVariant,
-      ),
-      ItemStatus.resolved => (
-        'RESOLVED',
-        AppColors.success,
-        AppColors.successSurface,
-      ),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
         ),
       ),
     );

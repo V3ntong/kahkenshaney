@@ -12,6 +12,12 @@
 # Cloud Functions
 -keep class com.kahkenshaney.amongapp.** { *; }
 
+# Keep Android resource IDs (prevents "Invalid ID 0x00000001" from
+# stale native resource references after Firebase/plugin version bumps).
+-keepclassmembers class **.R$* {
+    public static <fields>;
+}
+
 # Play Core classes referenced by Flutter's optional deferred-components engine
 # (PlayStoreDeferredComponentManager / FlutterPlayStoreSplitApplication). This app
 # uses no dynamic features, so these classes are never touched at runtime. The

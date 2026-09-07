@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/app_tokens.dart';
 
 class HomeCard extends StatelessWidget {
   const HomeCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(AppTokens.space20),
     this.color = AppColors.surface,
     this.gradient,
     this.onTap,
-    this.radius = 20,
+    this.radius = AppTokens.radiusLg,
   });
 
   final Widget child;
@@ -27,13 +28,7 @@ class HomeCard extends StatelessWidget {
       gradient: gradient,
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(color: AppColors.cardBorder),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x080F172A),
-          blurRadius: 16,
-          offset: Offset(0, 4),
-        ),
-      ],
+      boxShadow: AppTokens.shadowSm,
     );
 
     return Material(

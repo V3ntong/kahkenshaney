@@ -291,10 +291,14 @@ class _BrowseTabState extends State<_BrowseTab>
                         final item = items[index];
                         return ItemGridCard(
                           item: item,
+                          heroTagPrefix: 'browse',
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => ItemDetailScreen(item: item),
+                              builder: (_) => ItemDetailScreen(
+                                item: item,
+                                heroTagPrefix: 'browse',
+                              ),
                             ),
                           ),
                         );

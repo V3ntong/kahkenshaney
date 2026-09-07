@@ -11,8 +11,10 @@ import '../services/claim_api.dart';
 import '../services/match_api.dart';
 import '../services/resolve_api.dart';
 import '../theme/app_theme.dart';
+import '../theme/app_tokens.dart';
 import '../widgets/centered_success_overlay.dart';
 import '../widgets/item_grid_card.dart';
+import '../widgets/status_badge.dart';
 import 'user_chat_screen.dart';
 
 /// Full detail view for a single lost or found item.
@@ -21,9 +23,14 @@ import 'user_chat_screen.dart';
 /// description, timestamps), category row, AI match section (conditional),
 /// related items, and action button (Contact Reporter or Mark as Resolved).
 class ItemDetailScreen extends StatefulWidget {
-  const ItemDetailScreen({super.key, required this.item});
+  const ItemDetailScreen({
+    super.key,
+    required this.item,
+    this.heroTagPrefix = 'item',
+  });
 
   final LostFoundItem item;
+  final String heroTagPrefix;
 
   @override
   State<ItemDetailScreen> createState() => _ItemDetailScreenState();
@@ -121,7 +128,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             flexibleSpace: FlexibleSpaceBar(
               background: imageUrl != null
                   ? Hero(
-                      tag: 'item_image_${item.id}',
+                      tag: '${widget.heroTagPrefix}_${item.id}',
                       child: ClipRect(
                         child: SizedBox.expand(
                           child: Image.network(
@@ -153,59 +160,26 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 children: [
                   // Type badge + Status + Category badge
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: AppTokens.space8,
+                    runSpacing: AppTokens.space8,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accentSurface,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isLost
-                                  ? Icons.fmd_bad_rounded
-                                  : Icons.inventory_2_rounded,
-                              size: 14,
-                              color: accent,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isLost ? 'LOST' : 'FOUND',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: accent,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _StatusPill(status: item.status),
+                      KindBadge(isLost: isLost),
+                      StatusBadge.fromItemStatus(item.status),
                       if (item.category != null && item.category!.isNotEmpty)
                         _CategoryBadge(category: item.category!),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppTokens.space14),
 
                   // Title
                   Text(
                     item.title,
-                    style: const TextStyle(
+                    style: AppTokens.displaySmall.copyWith(
                       fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
                       letterSpacing: -0.3,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: AppTokens.space10),
 
                   // Info rows
                   if (item.location != null && item.location!.isNotEmpty)
@@ -230,7 +204,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       label: item.category!,
                     ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppTokens.space20),
 
                   // Description
                   if (item.description.isNotEmpty) ...[
@@ -332,6 +306,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   // Suggested Matches (stored scores or category fallback)
                   _SuggestedMatchesSection(
                     item: item,
+                    heroTagPrefix: widget.heroTagPrefix,
                     canConfirmMatch:
                         !item.status.isTerminal &&
                         (isAdmin ||
@@ -344,7 +319,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ItemDetailScreen(item: matchedItem),
+                          builder: (_) => ItemDetailScreen(
+                            item: matchedItem,
+                            heroTagPrefix: widget.heroTagPrefix,
+                          ),
                         ),
                       );
                     },
@@ -463,6 +441,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     currentItemId: item.id,
                     category: item.category,
                     currentItem: item,
+                    heroTagPrefix: widget.heroTagPrefix,
                   ),
                 ],
               ),
@@ -665,6 +644,7 @@ class _SuggestedMatchesSection extends StatelessWidget {
     required this.onItemTap,
     this.canConfirmMatch = false,
     this.onConfirmMatch,
+    this.heroTagPrefix = 'item',
   });
 
   final LostFoundItem item;
@@ -673,6 +653,7 @@ class _SuggestedMatchesSection extends StatelessWidget {
   /// Whether the viewer (reporter/admin) may link a suggested match.
   final bool canConfirmMatch;
   final ValueChanged<ItemMatchScore>? onConfirmMatch;
+  final String heroTagPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -913,11 +894,13 @@ class _RelatedItemsSection extends StatelessWidget {
     required this.currentItemId,
     this.category,
     required this.currentItem,
+    this.heroTagPrefix = 'item',
   });
 
   final String currentItemId;
   final String? category;
   final LostFoundItem currentItem;
+  final String heroTagPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -973,12 +956,15 @@ class _RelatedItemsSection extends StatelessWidget {
                     width: 140,
                     child: ItemGridCard(
                       item: related[index],
+                      heroTagPrefix: heroTagPrefix,
                       onTap: () {
                         Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                ItemDetailScreen(item: related[index]),
+                            builder: (_) => ItemDetailScreen(
+                              item: related[index],
+                              heroTagPrefix: heroTagPrefix,
+                            ),
                           ),
                         );
                       },
@@ -1054,70 +1040,6 @@ class _InfoRow extends StatelessWidget {
 }
 
 // ─── Status Pill ──────────────────────────────────────────────────────────
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final ItemStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color, bg) = switch (status) {
-      ItemStatus.open => ('OPEN', AppColors.success, AppColors.successSurface),
-      ItemStatus.pendingVerification => (
-        'PENDING',
-        AppColors.warning,
-        AppColors.warningSurface,
-      ),
-      ItemStatus.verified => (
-        'VERIFIED',
-        AppColors.info,
-        AppColors.infoSurface,
-      ),
-      ItemStatus.matched => (
-        'MATCHED',
-        AppColors.primary,
-        AppColors.infoSurface,
-      ),
-      ItemStatus.pendingClaim => (
-        'CLAIM PENDING',
-        AppColors.warning,
-        AppColors.warningSurface,
-      ),
-      ItemStatus.claimed => (
-        'CLAIMED',
-        AppColors.success,
-        AppColors.successSurface,
-      ),
-      ItemStatus.resolved => (
-        'RESOLVED',
-        AppColors.accent,
-        AppColors.successSurface,
-      ),
-      ItemStatus.closed => (
-        'CLOSED',
-        AppColors.textTertiary,
-        AppColors.surfaceVariant,
-      ),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Related Items Scoring ─────────────────────────────────────────────────
 

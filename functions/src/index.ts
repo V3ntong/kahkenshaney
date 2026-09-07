@@ -740,11 +740,52 @@ export const itemLifecycle = onDocumentUpdated(
         claimedBy !== reporter &&
         (after.status === 'claimed' || after.status === 'resolved')
       ) {
+        const itemTitle = after.title ?? 'an item';
+        let body = `Your claim for "${itemTitle}" has been ${after.status === 'resolved' ? 'resolved' : 'confirmed'}.`;
+
+        // Append pickup details when the item is resolved.
+        if (after.status === 'resolved') {
+          const pickupDate = after.pickupDateTime;
+          const pickupLoc = after.pickupLocation;
+          if (pickupDate || pickupLoc) {
+            const parts: string[] = [];
+            if (pickupDate) parts.push(`on ${pickupDate}`);
+            if (pickupLoc) parts.push(`at ${pickupLoc}`);
+            body += ` You can pick it up ${parts.join(' ')}.`;
+          }
+        }
+
         await notifyUser(
           claimedBy,
           after.status === 'resolved' ? 'Claim Resolved' : 'Claim Confirmed',
-          `Your claim for "${after.title ?? 'an item'}" has been ${after.status === 'resolved' ? 'resolved' : 'confirmed'}.`,
+          body,
           `status_${after.status}`,
+          event.params.itemId
+        );
+      }
+
+      // Notify the reporter/owner when the item is resolved by someone else.
+      if (
+        reporter &&
+        reporter !== claimedBy &&
+        after.status === 'resolved' &&
+        before.status !== 'resolved'
+      ) {
+        const itemTitle = after.title ?? 'an item';
+        let body = `Your item "${itemTitle}" has been marked as resolved.`;
+        const pickupDate = after.pickupDateTime;
+        const pickupLoc = after.pickupLocation;
+        if (pickupDate || pickupLoc) {
+          const parts: string[] = [];
+          if (pickupDate) parts.push(`on ${pickupDate}`);
+          if (pickupLoc) parts.push(`at ${pickupLoc}`);
+          body += ` You can pick it up ${parts.join(' ')}.`;
+        }
+        await notifyUser(
+          reporter,
+          'Item Resolved',
+          body,
+          'status_resolved',
           event.params.itemId
         );
       }
@@ -889,24 +930,45 @@ export const resolveItem = onCall(async (request) => {
   ];
 
   const now = admin.firestore.Timestamp.now();
-  await itemDoc.ref.update({
+  const updateData: Record<string, unknown> = {
     status: RESOLVED_STATUS,
     resolvedAt: now,
     resolvedBy: callerUid,
     statusHistory: updatedHistory,
     updatedAt: now,
-  });
+  };
+
+  // Store pickup details when provided by the admin.
+  if (request.data?.pickupDateTime) {
+    updateData.pickupDateTime = request.data.pickupDateTime;
+  }
+  if (request.data?.pickupLocation) {
+    updateData.pickupLocation = request.data.pickupLocation;
+  }
+
+  await itemDoc.ref.update(updateData);
 
   const owner = data.reportedBy || data.ownerUid;
   const claimedBy = data.claimedBy ?? null;
   const itemTitle = String(data.title ?? 'an item');
+
+  // Build a pickup-aware message when details are available.
+  const pickupDate = request.data?.pickupDateTime ?? null;
+  const pickupLoc = request.data?.pickupLocation ?? null;
+  let pickupSuffix = '';
+  if (pickupDate || pickupLoc) {
+    const parts: string[] = [];
+    if (pickupDate) parts.push(`on ${pickupDate}`);
+    if (pickupLoc) parts.push(`at ${pickupLoc}`);
+    pickupSuffix = ` You can pick it up ${parts.join(' ')}.`;
+  }
 
   // Notify the owner when someone else resolved it.
   if (owner && owner !== callerUid) {
     await notifyUser(
       owner,
       'Item Resolved',
-      `Your item "${itemTitle}" has been marked as resolved.`,
+      `Your item "${itemTitle}" has been marked as resolved.${pickupSuffix}`,
       'status_resolved',
       itemId
     );
@@ -917,7 +979,7 @@ export const resolveItem = onCall(async (request) => {
     await notifyUser(
       claimedBy,
       'Claim Resolved',
-      `Your claim for "${itemTitle}" has been resolved.`,
+      `Your claim for "${itemTitle}" has been resolved.${pickupSuffix}`,
       'status_resolved',
       itemId
     );
