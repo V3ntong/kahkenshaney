@@ -378,13 +378,13 @@ class LostFoundItem {
       'matchedItemId': matchedItemId,
       'claimedBy': claimedBy,
       'resolvedByAdminId': resolvedByAdminId,
-      'resolvedAt': resolvedAt?.toIso8601String(),
-      'pickupDateTime': pickupDateTime?.toIso8601String(),
+      'resolvedAt': resolvedAt,
+      'pickupDateTime': pickupDateTime,
       'pickupLocation': pickupLocation,
       'matchScores': matchScores.map((e) => e.toMap()).toList(),
-      'eventDate': eventDate?.toIso8601String(),
-      'createdAt': createdAt?.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
+'eventDate': eventDate,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
     };
   }
 
@@ -392,6 +392,7 @@ class LostFoundItem {
     if (value is DateTime) return value;
     if (value is Timestamp) return value.toDate();
     if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) return DateTime.tryParse(value);
     return null;
   }
 }

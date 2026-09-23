@@ -181,7 +181,7 @@ class _AdminResolvedScreenState extends State<AdminResolvedScreen> {
       await _repo.updateItemFields(item.id, {
         'status': ItemStatus.resolved.firestoreValue,
         'statusHistory': history,
-        'resolvedAt': DateTime.now().toIso8601String(),
+        'resolvedAt': DateTime.now(),
         'resolvedByAdminId': widget.adminUid,
         ...pickupFields,
       });
