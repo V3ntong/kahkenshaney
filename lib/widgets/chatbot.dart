@@ -291,7 +291,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Hello, ${_firstName}',
+              'Hello, $_firstName',
               style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
