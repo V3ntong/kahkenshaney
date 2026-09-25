@@ -2337,7 +2337,8 @@ class _AdminManagementCard extends StatefulWidget {
 
 class _AdminManagementCardState extends State<_AdminManagementCard> {
   final _emailController = TextEditingController();
-  bool _adding = false;
+  final _api = AdminApi();
+  bool _inviting = false;
 
   @override
   void dispose() {
@@ -2345,32 +2346,42 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
     super.dispose();
   }
 
-  Future<void> _addAdminEmail() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
+  /// Sends an administrator invitation through the `inviteAdmin` callable.
+  /// The server owns the write — the client never touches `adminInvites`
+  /// or `isAdmin` itself (the old `adminEmails` writes were rule-denied).
+  Future<void> _invite() async {
+    final email = _emailController.text.trim().toLowerCase();
+    if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid email address')),
       );
       return;
     }
 
-    setState(() => _adding = true);
+    setState(() => _inviting = true);
     try {
-      await widget.adminRepository?.addAdminEmail(email);
+      final result = await _api.inviteAdmin(email);
       _emailController.clear();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$email added as admin')),
-        );
+      if (!mounted) return;
+      final String message;
+      if (!result.emailSent) {
+        message = 'Invitation created for $email — the email could not be '
+            'delivered, but they will still see the prompt inside the app.';
+      } else if (result.resent) {
+        message = 'Invitation to $email was refreshed and re-sent';
+      } else {
+        message = 'Invitation sent to $email';
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add admin: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send invitation: ${AdminApi.messageFor(e)}')),
+      );
     } finally {
-      if (mounted) setState(() => _adding = false);
+      if (mounted) setState(() => _inviting = false);
     }
   }
 
@@ -2413,8 +2424,9 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
           ),
           const SizedBox(height: 14),
           const Text(
-            'Add admin access for users by entering their email address.',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            'Invite someone to help manage the app by sending an email invitation. '
+            'They accept from inside the app with their own account.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.45),
           ),
           const SizedBox(height: 12),
           Row(
@@ -2423,6 +2435,7 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
                 child: TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
                   decoration: const InputDecoration(
                     hintText: 'user@smctagum.edu.ph',
                     prefixIcon: Icon(Icons.email_outlined),
@@ -2434,15 +2447,15 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
               SizedBox(
                 height: 48,
                 child: ElevatedButton.icon(
-                  onPressed: _adding ? null : _addAdminEmail,
-                  icon: _adding
+                  onPressed: _inviting ? null : _invite,
+                  icon: _inviting
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Add'),
+                      : const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                  label: const Text('Send invite'),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
@@ -2450,85 +2463,384 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          _AdminEmailList(adminRepository: widget.adminRepository),
+          const SizedBox(height: 16),
+          _ActiveAdminsList(
+            adminRepository: widget.adminRepository,
+            api: _api,
+          ),
+          const SizedBox(height: 14),
+          _PendingInvitesList(
+            adminRepository: widget.adminRepository,
+            api: _api,
+          ),
         ],
       ),
     );
   }
 }
 
-class _AdminEmailList extends StatelessWidget {
-  const _AdminEmailList({required this.adminRepository});
+/// Small uppercase label for the two lists inside the card.
+class _ListLabel extends StatelessWidget {
+  const _ListLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: AppColors.textTertiary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Users that currently hold administrator access (`isAdmin: true`).
+class _ActiveAdminsList extends StatelessWidget {
+  const _ActiveAdminsList({
+    required this.adminRepository,
+    required this.api,
+  });
 
   final AdminRepository? adminRepository;
+  final AdminApi api;
+
+  Future<void> _removeAdmin(
+    BuildContext context,
+    Map<String, dynamic> admin,
+  ) async {
+    final uid = admin['uid'] as String? ?? '';
+    if (uid.isEmpty) return;
+    final email = (admin['email'] as String?)?.trim() ?? uid;
+    final name = (admin['displayName'] as String?)?.trim().isNotEmpty == true
+        ? admin['displayName'] as String
+        : email;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Administrator'),
+        content: Text('Remove administrator access for $name?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await api.removeAdminAccess(uid);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Administrator access removed for $name')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AdminApi.messageFor(e))),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (adminRepository == null) return const SizedBox.shrink();
+
+    final myUid = FirebaseAuthService().currentUser?.uid;
+
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: adminRepository!.streamAdmins(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+
+        final admins = snapshot.data ?? const <Map<String, dynamic>>[];
+        if (admins.isEmpty) {
+          return const Text(
+            'No administrators yet.',
+            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _ListLabel('Active administrators'),
+            for (final admin in admins)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 15,
+                      backgroundColor: AppColors.primarySurface,
+                      child: Text(
+                        _initial(admin),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  _displayName(admin),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (admin['uid'] == myUid) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primarySurface,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'You',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          Text(
+                            (admin['email'] as String?) ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _removeAdmin(context, admin),
+                      icon: const Icon(Icons.person_remove_alt_1_rounded, size: 18),
+                      color: AppColors.textTertiary,
+                      tooltip: 'Remove admin',
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _displayName(Map<String, dynamic> admin) {
+    final display = (admin['displayName'] as String?)?.trim();
+    if (display != null && display.isNotEmpty) return display;
+    final email = (admin['email'] as String?)?.trim() ?? '';
+    return email.isNotEmpty ? email.split('@').first : 'Administrator';
+  }
+
+  static String _initial(Map<String, dynamic> admin) {
+    final name = _displayName(admin);
+    return name.isEmpty ? '?' : name[0].toUpperCase();
+  }
+}
+
+/// Invitations that have been sent but not yet accepted.
+class _PendingInvitesList extends StatelessWidget {
+  const _PendingInvitesList({
+    required this.adminRepository,
+    required this.api,
+  });
+
+  final AdminRepository? adminRepository;
+  final AdminApi api;
+
+  String _formatSent(Timestamp? sentAt) {
+    if (sentAt == null) return 'sent recently';
+    final date = sentAt.toDate();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(date.year, date.month, date.day);
+    if (day == today) return 'sent today';
+    if (day == today.subtract(const Duration(days: 1))) return 'sent yesterday';
+    return 'sent ${_monthAbbr[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Future<void> _resend(Map<String, dynamic> invite) async {
+    final email = (invite['email'] as String?) ?? '';
+    if (email.isEmpty) return;
+    try {
+      final result = await api.resendAdminInvite(email);
+      if (!result.emailSent) {
+        throw StateError('email delivery failed');
+      }
+    } catch (e) {
+      debugPrint('[AdminManagement] resend failed: $e');
+    }
+  }
+
+  Future<void> _revoke(BuildContext context, Map<String, dynamic> invite) async {
+    final email = (invite['email'] as String?) ?? '';
+    if (email.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Revoke Invitation'),
+        content: Text('Revoke the pending invitation for $email?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await api.revokeAdminInvite(email);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invitation revoked for $email')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AdminApi.messageFor(e))),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     if (adminRepository == null) return const SizedBox.shrink();
 
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: adminRepository!.streamAdminEmails(),
+      stream: adminRepository!.streamPendingInvites(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
-            padding: EdgeInsets.all(8),
+            padding: EdgeInsets.symmetric(vertical: 8),
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
 
-        final emails = snapshot.data ?? const [];
-
-        if (emails.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'No additional admin emails added yet.',
-              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
-            ),
+        final invites = snapshot.data ?? const <Map<String, dynamic>>[];
+        if (invites.isEmpty) {
+          return const Text(
+            'No pending invitations.',
+            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
           );
         }
 
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final entry in emails)
+            const _ListLabel('Pending invitations'),
+            for (final invite in invites)
               Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
-                    const Icon(Icons.admin_panel_settings_rounded, size: 16, color: AppColors.primary),
-                    const SizedBox(width: 8),
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: AppColors.warningSurface,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: const Icon(
+                        Icons.mail_outline_rounded,
+                        size: 16,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        entry['email'] as String? ?? '',
-                        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            (invite['email'] as String?) ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            _formatSent(invite['sentAt'] as Timestamp?),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
+                      onPressed: () => _resend(invite),
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      color: AppColors.textSecondary,
+                      tooltip: 'Resend invite',
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    IconButton(
+                      onPressed: () => _revoke(context, invite),
                       icon: const Icon(Icons.close_rounded, size: 18),
                       color: AppColors.textTertiary,
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Remove Admin'),
-                            content: Text('Remove admin access for ${entry['email']}?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('Remove'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) {
-                          await adminRepository!.removeAdminEmail(entry['id']);
-                        }
-                      },
+                      tooltip: 'Revoke invite',
+                      visualDensity: VisualDensity.compact,
                     ),
                   ],
                 ),

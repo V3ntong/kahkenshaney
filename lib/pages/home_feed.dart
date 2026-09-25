@@ -10,6 +10,7 @@ import '../screens/item_detail_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/user_reports_screen.dart';
 import '../theme/app_theme.dart';
+import '../widgets/admin_invite_banner.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/feature_card.dart';
 import '../widgets/greeting_header.dart';
@@ -235,6 +236,7 @@ class _HomeFeedState extends State<HomeFeed> {
         notificationCount: _notificationsViewed ? 0 : _notificationCount,
       ),
       const SizedBox(height: 20),
+      const AdminInviteBanner(),
       HomeSearchBar(
         onSubmitted: (query) {
           if (query.trim().isNotEmpty) {
