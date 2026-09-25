@@ -59,38 +59,61 @@ class AdminRepository {
     });
   }
 
-  /// Stream of admin emails from the adminEmails collection.
-  Stream<List<Map<String, dynamic>>> streamAdminEmails() {
-    return _db.collection('adminEmails').snapshots().map(
-          (snap) => snap.docs.map((doc) => {
-                'id': doc.id,
+  /// Stream of users that currently hold administrator access
+  /// (`isAdmin: true`), newest first.
+  ///
+  /// Replaces the old `adminEmails` collection, which had no security rules
+  /// and was therefore always denied to the client.
+  Stream<List<Map<String, dynamic>>> streamAdmins() {
+    return _db
+        .collection('users')
+        .where('isAdmin', isEqualTo: true)
+        .snapshots()
+        .map((snap) {
+      final admins = snap.docs
+          .map((doc) => {
+                'uid': doc.id,
                 ...doc.data(),
-              }).toList(),
-        );
-  }
-
-  /// Adds an admin email to the adminEmails collection.
-  Future<void> addAdminEmail(String email) async {
-    final normalized = email.trim().toLowerCase();
-    await _db.collection('adminEmails').add({
-      'email': normalized,
-      'createdAt': FieldValue.serverTimestamp(),
+              })
+          .toList();
+      // Equality-only query (no composite index needed); sort in memory.
+      admins.sort((a, b) {
+        final aTime = a['createdAt'];
+        final bTime = b['createdAt'];
+        if (aTime is Timestamp && bTime is Timestamp) {
+          return bTime.compareTo(aTime);
+        }
+        return 0;
+      });
+      return admins;
     });
   }
 
-  /// Removes an admin email from the adminEmails collection.
-  Future<void> removeAdminEmail(String docId) async {
-    await _db.collection('adminEmails').doc(docId).delete();
-  }
-
-  /// Checks if an email is in the adminEmails collection.
-  Future<bool> isEmailAdmin(String email) async {
-    final normalized = email.trim().toLowerCase();
-    final snapshot = await _db
-        .collection('adminEmails')
-        .where('email', isEqualTo: normalized)
-        .limit(1)
-        .get();
-    return snapshot.docs.isNotEmpty;
+  /// Stream of pending administrator invitations, newest first.
+  ///
+  /// Readable by admins only (see firestore.rules); invitees use the
+  /// `getMyAdminInvite` callable instead.
+  Stream<List<Map<String, dynamic>>> streamPendingInvites() {
+    return _db
+        .collection('adminInvites')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) {
+      final invites = snap.docs
+          .map((doc) => {
+                'id': doc.id,
+                ...doc.data(),
+              })
+          .toList();
+      invites.sort((a, b) {
+        final aTime = a['sentAt'];
+        final bTime = b['sentAt'];
+        if (aTime is Timestamp && bTime is Timestamp) {
+          return bTime.compareTo(aTime);
+        }
+        return 0;
+      });
+      return invites;
+    });
   }
 }

@@ -111,6 +111,17 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // ── admin invites (created ONLY by Cloud Functions) ──────────────────
+    match /adminInvites/{inviteId} {
+      // Read: administrators only. Invitees learn about their own invitation
+      // via the `getMyAdminInvite` callable, because a token email's casing
+      // cannot be compared case-insensitively in rules.
+      allow read: if request.auth != null && isAdmin();
+
+      // All writes go through Cloud Functions (Admin SDK bypasses rules).
+      allow write: if false;
+    }
+
     // ── chatbot history (per-user, server-side Gemini) ────────────────
     match /chatbot_history/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;

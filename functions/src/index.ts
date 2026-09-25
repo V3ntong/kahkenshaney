@@ -1484,5 +1484,54 @@ export const removeAdminAccess = onCall(async (request) => {
   return { removed: true };
 });
 
+/**
+ * Callable: returns the caller's own pending invitation (or `null`).
+ *
+ * Invitees cannot read `adminInvites` directly (rules can't compare the
+ * token email case-insensitively), so the banner uses this instead.
+ */
+export const getMyAdminInvite = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    return { invite: null };
+  }
+
+  const email = normalizeEmail(
+    request.auth?.token?.email ?? (await verifiedCallerEmail(uid))
+  );
+  if (!email) return { invite: null };
+
+  try {
+    const pending = await findPendingInvite(email);
+    if (!pending) return { invite: null };
+
+    const data = pending.data();
+    const expiresAt = data.expiresAt?.toDate?.() as Date | undefined;
+    if (expiresAt && expiresAt.getTime() < Date.now()) {
+      await pending.ref.set(
+        {
+          status: 'expired',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return { invite: null };
+    }
+
+    return {
+      invite: {
+        id: pending.id,
+        email,
+        invitedByEmail: String(data.invitedByEmail ?? ''),
+        sentAt: data.sentAt?.toDate?.()?.toISOString() ?? null,
+        expiresAt: expiresAt?.toISOString() ?? null,
+      },
+    };
+  } catch (error) {
+    console.warn('[getMyAdminInvite] failed:', error);
+    return { invite: null };
+  }
+});
+
 // KashTeP assistant (callable Gemini proxy) — see ./chatbot.ts
 export { kashtep } from './chatbot';

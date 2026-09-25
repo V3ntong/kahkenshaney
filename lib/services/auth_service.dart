@@ -41,7 +41,11 @@ Future<String?> lookupAdminUid() async {
 }
 
 /// Whether [email] matches the designated admin email (case-insensitive).
-/// Also checks the adminEmails Firestore collection for dynamically added admins.
+/// Also checks for dynamically granted admins.
+///
+/// Looks at `users` where `isAdmin == true` (server-assigned) instead of the
+/// old `adminEmails` collection, which has no security rules and therefore
+/// always denied client reads.
 Future<bool> isAdminEmailAsync(String? email) async {
   if (email == null) return false;
   final trimmed = email.trim().toLowerCase();
@@ -49,11 +53,19 @@ Future<bool> isAdminEmailAsync(String? email) async {
 
   try {
     final snapshot = await FirebaseFirestore.instance
-        .collection('adminEmails')
-        .where('email', isEqualTo: trimmed)
-        .limit(1)
+        .collection('users')
+        .where('isAdmin', isEqualTo: true)
+        .limit(50)
         .get();
-    return snapshot.docs.isNotEmpty;
+
+    for (final doc in snapshot.docs) {
+      final candidate = doc.data()['email'];
+      if (candidate is String &&
+          candidate.trim().toLowerCase() == trimmed) {
+        return true;
+      }
+    }
+    return false;
   } catch (e) {
     debugPrint('[AuthService] isAdminEmailAsync error: $e');
     return false;
@@ -113,7 +125,7 @@ abstract class AuthService {
   bool get isAuthenticated => currentUser != null;
 
   /// Whether the currently signed-in user is the designated admin email.
-  /// Checks both the hardcoded admin email and the adminEmails Firestore collection.
+  /// Checks both the hardcoded admin email and the users granted `isAdmin`.
   bool get isAdminAuthenticated => isAdminEmail(currentUser?.email) || _asyncAdminCheckResult;
 
   /// Checks and caches the admin status from Firestore for the current user.
