@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
-import '../services/auth_service.dart' show isAdminEmail;
+import '../services/auth_service.dart' show FirebaseAuthService;
 import '../data/firestore/notification_service.dart';
 import '../services/claim_api.dart';
 import '../services/match_api.dart';
@@ -72,7 +72,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final imageUrl = item.displayUrl;
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final isOwner = currentUid != null && currentUid == item.ownerUid;
-    final isAdmin = isAdminEmail(FirebaseAuth.instance.currentUser?.email);
+    // Uses the async admin check (hardcoded email OR any user with
+    // `isAdmin: true`, e.g. someone who accepted an invitation) instead of
+    // the synchronous email-only helper.
+    final isAdmin = FirebaseAuthService().isAdminAuthenticated;
     final canContact =
         currentUid != null &&
         !isOwner &&
@@ -82,11 +85,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     // Resolution is an administrative lifecycle transition. The callable
     // enforces this again server-side; this guard keeps the control out of
     // every regular user's UI.
-    // Show when: (1) the viewer is an admin (synchronous email check), AND
+    // Show when: (1) the viewer is an admin, AND
     // (2) the item status is NOT terminal (claimed/resolved/closed).
-    // NOTE: isAdminEmail() checks only the hardcoded kAdminEmail. If a
-    // dynamically-added admin (adminEmails collection) cannot see this
-    // button, switch to isAdminAuthenticated from AuthService instead.
     final canResolve = !item.status.isTerminal && isAdmin;
     // Claimability rule: a non-admin, non-owner, non-reporter user may claim
     // an item whose status is non-terminal and which has no pending/accepted

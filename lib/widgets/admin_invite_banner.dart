@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/admin_api.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
 /// Prompt shown on Home when the signed-in user has a pending administrator
@@ -67,6 +68,13 @@ class _AdminInviteBannerState extends State<AdminInviteBanner> {
     setState(() => _busy = true);
     try {
       await _api.respondToAdminInvite();
+      // Refresh the cached admin check so the dashboard is reachable right
+      // away instead of only after an app restart.
+      try {
+        await FirebaseAuthService().refreshAdminStatus();
+      } catch (e) {
+        debugPrint('[AdminInviteBanner] refreshAdminStatus failed: $e');
+      }
       if (!mounted) return;
       setState(() => _invite = null);
       ScaffoldMessenger.of(context).showSnackBar(
