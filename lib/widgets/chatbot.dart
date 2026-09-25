@@ -439,17 +439,29 @@ class _ChatScreenState extends State<ChatScreen> {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
               decoration: InputDecoration(
-                hintText: 'Ask about the app...',
+                hintText: 'Ask KashTeP...',
                 hintStyle: TextStyle(color: AppColors.textTertiary),
                 filled: true,
                 fillColor: AppColors.background,
+                isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 20,
+                  vertical: 14,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(28),
                   borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(28),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(28),
+                  borderSide: const BorderSide(
+                    color: AppColors.primary,
+                    width: 1,
+                  ),
                 ),
               ),
             ),
@@ -496,19 +508,15 @@ class _MessageBubble extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
-        decoration: BoxDecoration(
-          color: isUser ? AppColors.primary : AppColors.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isUser ? 18 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 18),
-          ),
-          border: isUser
-              ? null
-              : Border.all(color: AppColors.cardBorder),
-          boxShadow: AppColors.softShadow,
+      decoration: BoxDecoration(
+        color: isUser ? AppColors.primary : AppColors.surfaceVariant,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(16),
+          topRight: const Radius.circular(16),
+          bottomLeft: Radius.circular(isUser ? 16 : 4),
+          bottomRight: Radius.circular(isUser ? 4 : 16),
         ),
+      ),
         child: Text(
           text,
           style: TextStyle(
@@ -540,6 +548,79 @@ class _QuickChip extends StatelessWidget {
       side: const BorderSide(color: AppColors.primary, width: 0.5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
+      ),
+    );
+  }
+}
+
+/// Persistent inline error row shown under the failed user message, with a
+/// Retry action so the failure can be resolved from the conversation itself.
+class _InlineError extends StatelessWidget {
+  const _InlineError({
+    required this.message,
+    required this.retryable,
+    required this.onRetry,
+    this.centered = false,
+  });
+
+  final String message;
+  final bool retryable;
+  final VoidCallback onRetry;
+  final bool centered;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.errorSurface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 18,
+            color: AppColors.error,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: AppColors.error,
+              ),
+            ),
+          ),
+          if (retryable) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (centered) return content;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
+        ),
+        child: content,
       ),
     );
   }
