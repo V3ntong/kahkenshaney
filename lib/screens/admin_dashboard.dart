@@ -282,7 +282,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 2:
         return AdminResolvedScreen(adminUid: _auth.currentUser?.uid ?? '');
       case 3:
-        return const _SectionPlaceholder(icon: Icons.receipt_long_rounded, title: 'Reports');
+        return _ReportsSection(
+          itemsStream: _itemsStream,
+          repositoryAvailable: _repository != null,
+          onNotice: _showNotice,
+        );
       case 4:
         return _UsersSection(usersStream: _usersListStream, adminRepository: _repository);
       case 5:
@@ -3369,6 +3373,603 @@ class _SettingsSectionState extends State<_SettingsSection> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Reports section ────────────────────────────────────────────────────────
+
+/// Date window applied to every metric on the Reports screen.
+enum _ReportRange {
+  last7('Last 7 days', Duration(days: 7)),
+  last30('Last 30 days', Duration(days: 30)),
+  all('All time', null);
+
+  const _ReportRange(this.label, this.window);
+
+  final String label;
+  final Duration? window;
+}
+
+/// Aggregate numbers shown as stat cards on the Reports screen.
+class _ReportMetrics {
+  _ReportMetrics({
+    required this.total,
+    required this.resolved,
+    required this.open,
+    required this.claims,
+    required this.resolutionRate,
+    required this.avgMatchHours,
+    required this.avgResolveHours,
+  });
+
+  factory _ReportMetrics.fromItems(List<LostFoundItem> items) {
+    var resolved = 0, open = 0, claims = 0;
+    var matchMillis = 0, matchSamples = 0;
+    var resolveMillis = 0, resolveSamples = 0;
+
+    for (final item in items) {
+      if (item.status.isTerminal) {
+        resolved++;
+      } else {
+        open++;
+      }
+      if (item.status == ItemStatus.pendingClaim ||
+          item.status == ItemStatus.claimed) {
+        claims++;
+      }
+
+      final created = item.createdAt;
+      if (created == null) continue;
+
+      final matchedAt = _firstStatusChange(item, ItemStatus.matched.name) ??
+          _firstStatusChange(item, ItemStatus.claimed.name);
+      if (matchedAt != null && matchedAt.isAfter(created)) {
+        matchMillis += matchedAt.difference(created).inMilliseconds;
+        matchSamples++;
+      }
+
+      final resolvedAt = item.resolvedAt;
+      if (resolvedAt != null && resolvedAt.isAfter(created)) {
+        resolveMillis += resolvedAt.difference(created).inMilliseconds;
+        resolveSamples++;
+      }
+    }
+
+    return _ReportMetrics(
+      total: items.length,
+      resolved: resolved,
+      open: open,
+      claims: claims,
+      resolutionRate:
+          items.isEmpty ? 0 : ((resolved * 100) / items.length).round(),
+      avgMatchHours:
+          matchSamples == 0 ? null : (matchMillis / matchSamples / 3600000).round(),
+      avgResolveHours: resolveSamples == 0
+          ? null
+          : (resolveMillis / resolveSamples / 3600000).round(),
+    );
+  }
+
+  static DateTime? _firstStatusChange(LostFoundItem item, String status) {
+    for (final entry in item.statusHistory) {
+      if (entry.status == status && entry.changedAt != null) {
+        return entry.changedAt;
+      }
+    }
+    return null;
+  }
+
+  final int total;
+  final int resolved;
+  final int open;
+  final int claims;
+  final int resolutionRate;
+
+  /// Average hours from report creation to the first match, or null when no
+  /// report in the period has been matched yet.
+  final int? avgMatchHours;
+
+  /// Average hours from report creation to final resolution, or null when
+  /// nothing in the period has been resolved yet.
+  final int? avgResolveHours;
+}
+
+/// Analytics for all reports: period filter, stat cards, charts, status
+/// breakdown and the recent reports list.
+class _ReportsSection extends StatefulWidget {
+  const _ReportsSection({
+    required this.itemsStream,
+    required this.repositoryAvailable,
+    required this.onNotice,
+  });
+
+  final Stream<List<LostFoundItem>>? itemsStream;
+  final bool repositoryAvailable;
+  final ValueChanged<String> onNotice;
+
+  @override
+  State<_ReportsSection> createState() => _ReportsSectionState();
+}
+
+class _ReportsSectionState extends State<_ReportsSection> {
+  _ReportRange _range = _ReportRange.last30;
+
+  List<LostFoundItem> _inRange(List<LostFoundItem> items) {
+    final window = _range.window;
+    if (window == null) return items;
+    final cutoff = DateTime.now().subtract(window);
+    // Items without a creation timestamp can't be placed in time, so they are
+    // kept rather than silently dropped from the totals.
+    return items
+        .where((item) => item.createdAt == null || item.createdAt!.isAfter(cutoff))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final statCardWidth = w >= 1180
+            ? (w - 48) / 4
+            : w >= 640
+                ? (w - 16) / 2
+                : w;
+        final chartCardWidth = w >= 1000 ? (w - 16) / 2 : w;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ReportsHeader(
+                range: _range,
+                onRangeChanged: (range) => setState(() => _range = range),
+              ),
+              const SizedBox(height: 20),
+              if (!widget.repositoryAvailable)
+                const _UnavailableNotice(),
+              if (widget.itemsStream == null)
+                const _EmptyPanel(
+                  icon: Icons.cloud_off_rounded,
+                  title: 'Live data unavailable',
+                  message: 'Report statistics could not be loaded right now.',
+                )
+              else
+                StreamBuilder<List<LostFoundItem>>(
+                  stream: widget.itemsStream,
+                  builder: (context, snapshot) {
+                    final items = _inRange(
+                      snapshot.data ?? const <LostFoundItem>[],
+                    );
+                    if (items.isEmpty) {
+                      return Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          _EmptyPanel(
+                            icon: Icons.receipt_long_rounded,
+                            title: 'No reports in ${_range.label.toLowerCase()}',
+                            message:
+                                'Try a wider date range, or check back once '
+                                'new reports come in.',
+                          ),
+                        ],
+                      );
+                    }
+
+                    final data = _DashboardData.fromItems(items);
+                    final metrics = _ReportMetrics.fromItems(items);
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(0),
+                              child: _StatCard(
+                                width: statCardWidth,
+                                label: 'Reports',
+                                value: metrics.total,
+                                icon: Icons.receipt_long_rounded,
+                                color: AppColors.primary,
+                                tint: AppColors.primarySurface,
+                                caption: 'submitted in period',
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(1),
+                              child: _StatCard(
+                                width: statCardWidth,
+                                label: 'Resolved',
+                                value: metrics.resolved,
+                                icon: Icons.verified_rounded,
+                                color: AppColors.success,
+                                tint: AppColors.successSurface,
+                                caption: 'claimed, resolved or archived',
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(2),
+                              child: _StatCard(
+                                width: statCardWidth,
+                                label: 'Open',
+                                value: metrics.open,
+                                icon: Icons.pending_actions_rounded,
+                                color: AppColors.warning,
+                                tint: AppColors.warningSurface,
+                                caption: 'awaiting action',
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(3),
+                              child: _StatCard(
+                                width: statCardWidth,
+                                label: 'Claims',
+                                value: metrics.claims,
+                                icon: Icons.assignment_turned_in_rounded,
+                                color: AppColors.info,
+                                tint: AppColors.infoSurface,
+                                caption: 'claim pending or completed',
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(4),
+                              child: _StatCard(
+                                width: statCardWidth,
+                                label: 'Resolution Rate',
+                                value: metrics.resolutionRate,
+                                icon: Icons.percent_rounded,
+                                color: AppColors.primaryDark,
+                                tint: AppColors.primarySurface,
+                                caption: 'of reports in period',
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(5),
+                              child: _StatCard(
+                                width: statCardWidth,
+                                label: 'Avg. Time to Match',
+                                value: metrics.avgMatchHours ?? 0,
+                                icon: Icons.schedule_rounded,
+                                color: AppColors.textSecondary,
+                                tint: AppColors.surfaceVariant,
+                                caption: metrics.avgMatchHours == null
+                                    ? 'no matches in period yet'
+                                    : 'hours report → first match',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(6),
+                              child: _ChartCard(
+                                width: chartCardWidth,
+                                title: 'Daily Reports · last 7 days',
+                                child: _TrendChart(data: data),
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(7),
+                              child: _ChartCard(
+                                width: chartCardWidth,
+                                title: 'Reports by Category',
+                                child: _CategoryDonut(
+                                  slices: data.categories,
+                                  total: data.total,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(8),
+                              child: _ChartCard(
+                                width: chartCardWidth,
+                                title: 'Status Breakdown',
+                                child: _StatusBreakdown(items: items),
+                              ),
+                            ),
+                            FadeSlideInWidget(
+                              delay: FadeSlideInWidget.staggerDelay(9),
+                              child: _ChartCard(
+                                width: chartCardWidth,
+                                title: 'Average Resolution Time',
+                                child: _ResolutionTimeRow(
+                                  avgMatchHours: metrics.avgMatchHours,
+                                  avgResolveHours: metrics.avgResolveHours,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        FadeSlideInWidget(
+                          delay: FadeSlideInWidget.staggerDelay(10),
+                          child: _RecentReportsCard(
+                            items: data.recent,
+                            onNotice: widget.onNotice,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Title + date-range chips, styled after the dashboard `_Header`.
+class _ReportsHeader extends StatelessWidget {
+  const _ReportsHeader({required this.range, required this.onRangeChanged});
+
+  final _ReportRange range;
+  final ValueChanged<_ReportRange> onRangeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 12,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Reports',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Analytics across every lost & found report',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in _ReportRange.values)
+              _RangeChip(
+                label: option.label,
+                selected: option == range,
+                onTap: () => onRangeChanged(option),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _RangeChip extends StatelessWidget {
+  const _RangeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primarySurface : AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? AppColors.primary.withValues(alpha: 0.4)
+                : AppColors.cardBorder,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            color: selected ? AppColors.primary : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Horizontal count bars, one per status present in the period.
+class _StatusBreakdown extends StatelessWidget {
+  const _StatusBreakdown({required this.items});
+
+  final List<LostFoundItem> items;
+
+  Color _colorFor(ItemStatus status) {
+    switch (status) {
+      case ItemStatus.resolved:
+      case ItemStatus.claimed:
+        return AppColors.success;
+      case ItemStatus.matched:
+      case ItemStatus.verified:
+        return AppColors.primary;
+      case ItemStatus.pendingClaim:
+      case ItemStatus.pendingVerification:
+        return AppColors.info;
+      case ItemStatus.open:
+        return AppColors.warning;
+      case ItemStatus.closed:
+        return AppColors.textTertiary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = <ItemStatus, int>{};
+    for (final item in items) {
+      counts[item.status] = (counts[item.status] ?? 0) + 1;
+    }
+    final rows = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final max = rows.isEmpty ? 1 : rows.first.value;
+
+    return Column(
+      children: [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      row.key.label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      '${row.value}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: row.value / max,
+                    minHeight: 6,
+                    backgroundColor: AppColors.surfaceVariant,
+                    color: _colorFor(row.key),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Two-line summary of the average match and resolution times.
+class _ResolutionTimeRow extends StatelessWidget {
+  const _ResolutionTimeRow({
+    required this.avgMatchHours,
+    required this.avgResolveHours,
+  });
+
+  final int? avgMatchHours;
+  final int? avgResolveHours;
+
+  Widget _row(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required int? hours,
+    required String emptyText,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hours == null ? emptyText : '$hours h',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _row(
+          context,
+          icon: Icons.compare_arrows_rounded,
+          label: 'Report → first match',
+          hours: avgMatchHours,
+          emptyText: 'No matches yet',
+        ),
+        const SizedBox(height: 12),
+        _row(
+          context,
+          icon: Icons.task_alt_rounded,
+          label: 'Report → resolution',
+          hours: avgResolveHours,
+          emptyText: 'Nothing resolved yet',
+        ),
+      ],
     );
   }
 }
