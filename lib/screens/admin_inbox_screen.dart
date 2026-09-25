@@ -90,15 +90,9 @@ class _AdminInboxScreenState extends State<AdminInboxScreen> {
             return _buildEmpty();
           }
 
-          return ListView.separated(
+          return ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: chats.length,
-            separatorBuilder: (_, __) => const Divider(
-              height: 1,
-              indent: 72,
-              endIndent: 16,
-              color: AppColors.cardBorder,
-            ),
             itemBuilder: (context, index) {
               final chat = chats[index];
               return _ChatTile(
@@ -178,19 +172,22 @@ class _ChatTile extends StatefulWidget {
 
 class _ChatTileState extends State<_ChatTile> {
   String _userName = 'User';
+  String? _photoUrl;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadUserName();
+    _loadUser();
   }
 
-  Future<void> _loadUserName() async {
-    final name = await widget.chatService.getUserDisplayName(widget.chat.userId);
+  Future<void> _loadUser() async {
+    final preview =
+        await widget.chatService.getUserPreview(widget.chat.userId);
     if (!mounted) return;
     setState(() {
-      _userName = name;
+      _userName = preview.displayName;
+      _photoUrl = preview.photoUrl;
       _loading = false;
     });
   }
@@ -201,97 +198,209 @@ class _ChatTileState extends State<_ChatTile> {
     final hasUnread = chat.unreadByAdmin;
     final unreadCount = chat.unreadByAdminCount;
     final lastTime = chat.lastMessageAt;
+    final preview = chat.lastMessage.isNotEmpty
+        ? chat.lastMessage
+        : 'No messages yet';
 
-    return ListTile(
-      onTap: widget.onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Stack(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: hasUnread ? AppColors.primary : AppColors.surfaceVariant,
-            child: Text(
-              _loading ? '?' : _userName[0].toUpperCase(),
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: hasUnread ? Colors.white : AppColors.textSecondary,
-              ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      child: Material(
+        color: hasUnread
+            ? AppColors.primarySurface.withValues(alpha: 0.75)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: widget.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _buildAvatar(hasUnread, unreadCount),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (hasUnread) ...[
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              _loading ? 'Loading…' : _userName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: hasUnread
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (lastTime != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatTimestamp(lastTime),
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: hasUnread
+                                    ? AppColors.primary
+                                    : AppColors.textTertiary,
+                                fontWeight:
+                                    hasUnread ? FontWeight.w600 : FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                height: 1.3,
+                                color: hasUnread
+                                    ? AppColors.textSecondary
+                                    : AppColors.textTertiary,
+                                fontWeight:
+                                    hasUnread ? FontWeight.w600 : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          if (hasUnread && unreadCount > 0)
-            Positioned(
-              right: -2,
-              top: -2,
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                padding: const EdgeInsets.symmetric(horizontal: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.error,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.surface, width: 2),
-                ),
-                child: Center(
-                  child: Text(
-                    unreadCount > 99 ? '99+' : '$unreadCount',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      height: 1,
-                    ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatar(bool hasUnread, int unreadCount) {
+    final initial = _loading || _userName.isEmpty
+        ? '?'
+        : _userName[0].toUpperCase();
+    final photoUrl = _photoUrl;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: hasUnread ? AppColors.primary : AppColors.surfaceVariant,
+            border: Border.all(color: AppColors.surface, width: 2),
+          ),
+          child: ClipOval(
+            child: photoUrl != null
+                ? Image.network(
+                    photoUrl,
+                    fit: BoxFit.cover,
+                    width: 48,
+                    height: 48,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: hasUnread
+                                ? Colors.white
+                                : AppColors.textTertiary,
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) =>
+                        _initialLetter(initial, hasUnread),
+                  )
+                : _initialLetter(initial, hasUnread),
+          ),
+        ),
+        if (hasUnread && unreadCount > 0)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              decoration: BoxDecoration(
+                color: AppColors.error,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.surface, width: 2),
+              ),
+              child: Center(
+                child: Text(
+                  unreadCount > 99 ? '99+' : '$unreadCount',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1,
                   ),
                 ),
               ),
             ),
-        ],
-      ),
-      title: Text(
-        _loading ? 'Loading...' : _userName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w500,
-          color: AppColors.textPrimary,
-        ),
-      ),
-      subtitle: Text(
-        chat.lastMessage.isNotEmpty ? chat.lastMessage : 'No messages yet',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 13,
-          color: hasUnread ? AppColors.textPrimary : AppColors.textSecondary,
-          fontWeight: hasUnread ? FontWeight.w500 : FontWeight.normal,
-        ),
-      ),
-      trailing: lastTime != null
-          ? Text(
-              _formatRelativeTime(lastTime),
-              style: TextStyle(
-                fontSize: 11,
-                color: hasUnread ? AppColors.primary : AppColors.textTertiary,
-                fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
-              ),
-            )
-          : null,
+          ),
+      ],
     );
   }
 
-  String _formatRelativeTime(DateTime time) {
+  Widget _initialLetter(String initial, bool hasUnread) {
+    return Center(
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: hasUnread ? Colors.white : AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  /// Messaging-app timestamp convention:
+  /// Now → `12m` → `3h` → `2d` → `Jan 5` → `Jan 5, 2025`.
+  String _formatTimestamp(DateTime time) {
     final now = DateTime.now();
     final diff = now.difference(time);
 
     if (diff.inMinutes < 1) return 'Now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inHours < 24 && now.day == time.day) return '${diff.inHours}h';
     if (diff.inDays < 7) return '${diff.inDays}d';
 
-    final months = [
+    const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
-    return '${months[time.month - 1]} ${time.day}';
+    final stamp = '${months[time.month - 1]} ${time.day}';
+    return time.year == now.year ? stamp : '$stamp, ${time.year}';
   }
 }

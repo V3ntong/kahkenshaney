@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../data/firestore/notification_service.dart';
@@ -95,22 +93,97 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: notifications.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
-            itemBuilder: (context, index) {
-              final notif = notifications[index];
-              return _NotificationTile(
-                notification: notif,
-                onTap: () async {
-                  await _service.markAsRead(widget.userId, notif.id);
-                  widget.onNotificationTap?.call(notif.relatedItemId);
-                },
+          // Presentation-layer grouping only — the underlying stream/query
+          // stays exactly as it was (newest first).
+          final children = <Widget>[];
+          for (final section in _groupByRecency(notifications)) {
+            children.add(_SectionHeader(label: section.label));
+            for (final notif in section.notifications) {
+              children.add(
+                _NotificationTile(
+                  notification: notif,
+                  onTap: () async {
+                    await _service.markAsRead(widget.userId, notif.id);
+                    widget.onNotificationTap?.call(notif.relatedItemId);
+                  },
+                ),
               );
-            },
+            }
+          }
+          children.add(const SizedBox(height: 8));
+
+          return ListView(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            children: children,
           );
         },
+      ),
+    );
+  }
+
+  /// Buckets notifications into Today / This week / Earlier, preserving the
+  /// newest-first order the stream already provides.
+  List<_NotificationSection> _groupByRecency(List<AppNotification> items) {
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    // Week starts on Monday so "This week" matches the usual calendar feel.
+    final startOfWeek =
+        startOfToday.subtract(Duration(days: startOfToday.weekday - 1));
+
+    final today = <AppNotification>[];
+    final thisWeek = <AppNotification>[];
+    final earlier = <AppNotification>[];
+
+    for (final n in items) {
+      final at = n.createdAt;
+      if (at == null) {
+        today.add(n);
+      } else if (!at.isBefore(startOfToday)) {
+        today.add(n);
+      } else if (!at.isBefore(startOfWeek)) {
+        thisWeek.add(n);
+      } else {
+        earlier.add(n);
+      }
+    }
+
+    return [
+      if (today.isNotEmpty)
+        _NotificationSection('Today', today),
+      if (thisWeek.isNotEmpty)
+        _NotificationSection('This week', thisWeek),
+      if (earlier.isNotEmpty)
+        _NotificationSection('Earlier', earlier),
+    ];
+  }
+}
+
+class _NotificationSection {
+  const _NotificationSection(this.label, this.notifications);
+
+  final String label;
+  final List<AppNotification> notifications;
+}
+
+// ── Section Header ────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.4,
+          color: AppColors.textTertiary,
+        ),
       ),
     );
   }
@@ -131,13 +204,16 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = _iconForType(notification.type);
     final color = _colorForType(notification.type);
+    final unread = !notification.isRead;
 
+    // Rounded-square, colour-coded container so notification types can be
+    // scanned at a glance (green = approved/resolved, blue = submitted, ...).
     final leadingIcon = Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(icon, size: 20, color: color),
     );
@@ -145,33 +221,34 @@ class _NotificationTile extends StatelessWidget {
     final tile = ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: notification.isRead
-          ? leadingIcon
-          : Stack(
+      leading: unread
+          ? Stack(
               clipBehavior: Clip.none,
               children: [
                 leadingIcon,
                 Positioned(
-                  top: 0,
-                  right: 0,
+                  top: -1,
+                  right: -1,
                   child: Container(
                     width: 10,
                     height: 10,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppColors.error,
                       shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.surface, width: 1.5),
                     ),
                   ),
                 ),
               ],
-            ),
+            )
+          : leadingIcon,
       title: Text(
         notification.title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 14,
-          fontWeight: notification.isRead ? FontWeight.w500 : FontWeight.w700,
+          fontWeight: unread ? FontWeight.w700 : FontWeight.w500,
           color: AppColors.textPrimary,
         ),
       ),
@@ -179,41 +256,49 @@ class _NotificationTile extends StatelessWidget {
         notification.body,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.35,
+          color: unread ? AppColors.textSecondary : AppColors.textTertiary,
+          fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
+        ),
       ),
       trailing: notification.createdAt != null
           ? Text(
               _formatRelativeTime(notification.createdAt!),
-              style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+              style: TextStyle(
+                fontSize: 11,
+                color: unread ? AppColors.primary : AppColors.textTertiary,
+                fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+              ),
             )
           : null,
     );
 
+    // Unread rows get a soft tint so they stand out from read history.
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: notification.isRead ? Colors.transparent : AppColors.primarySurface.withValues(alpha: 0.3),
+        color: unread
+            ? AppColors.primarySurface.withValues(alpha: 0.9)
+            : Colors.transparent,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: notification.isRead
-            ? tile
-            : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 1.2, sigmaY: 1.2),
-                child: tile,
-              ),
-      ),
+      child: tile,
     );
   }
 
   IconData _iconForType(String type) => switch (type) {
-        'moderation_approved' => Icons.check_circle_rounded,
+        'moderation_approved' => Icons.verified_rounded,
         'moderation_rejected' => Icons.cancel_rounded,
-        'status_verified' => Icons.verified_rounded,
+        'status_verified' => Icons.check_circle_rounded,
         'status_matched' => Icons.swap_horiz_rounded,
         'status_claimed' => Icons.check_circle_outline_rounded,
-        'status_resolved' => Icons.inventory_2_rounded,
+        'status_resolved' => Icons.task_alt_rounded,
+        'claim_submitted' => Icons.assignment_turned_in_rounded,
+        'match_suggestion' => Icons.auto_awesome_rounded,
+        'match_confirmed' => Icons.link_rounded,
+        'admin_invite' => Icons.admin_panel_settings_rounded,
         _ => Icons.notifications_none_rounded,
       };
 
@@ -221,9 +306,13 @@ class _NotificationTile extends StatelessWidget {
         'moderation_approved' => AppColors.success,
         'moderation_rejected' => AppColors.error,
         'status_verified' => AppColors.success,
-        'status_matched' => AppColors.primary,
+        'status_matched' => AppColors.success,
         'status_claimed' => AppColors.success,
         'status_resolved' => AppColors.success,
+        'claim_submitted' => AppColors.info,
+        'match_suggestion' => AppColors.primary,
+        'match_confirmed' => AppColors.primary,
+        'admin_invite' => AppColors.primary,
         _ => AppColors.info,
       };
 
