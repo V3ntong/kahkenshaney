@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/firestore/support_chat_service.dart';
+import '../data/storage/chat_image_uploader.dart';
 import '../models/support_message.dart';
 import '../theme/app_theme.dart';
 
@@ -133,22 +133,18 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
     if (picked == null || !mounted) return;
 
     try {
-      final file = File(picked.path);
-      final fileName = 'chat_${widget.chatId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = FirebaseStorage.instance.ref('chat_images/$fileName');
-      await ref.putFile(
-        file,
-        SettableMetadata(
-          customMetadata: {'metadataUploaderId': widget.adminUid},
-        ),
+      final url = await ChatImageUploader.upload(
+        file: File(picked.path),
+        uploaderUid: widget.adminUid,
+        fileName:
+            'chat_${widget.chatId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
-      final url = await ref.getDownloadURL();
       if (!mounted) return;
       _sendMessage(imageUrl: url);
-    } catch (e) {
+    } on ChatImageUploadException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to upload image. Please try again.')),
+        SnackBar(content: Text(e.message)),
       );
     }
   }

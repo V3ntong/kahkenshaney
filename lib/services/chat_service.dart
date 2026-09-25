@@ -35,6 +35,19 @@ class ChatMessage {
   }
 }
 
+/// Thrown when the assistant call fails. Carries a message that is already
+/// safe to show to the user, plus whether retrying makes sense.
+class ChatSendException implements Exception {
+  const ChatSendException(this.message, {this.code, this.retryable = true});
+
+  final String message;
+  final String? code;
+  final bool retryable;
+
+  @override
+  String toString() => message;
+}
+
 /// Chatbot backend that persists conversation history to Firestore and
 /// routes Gemini requests through the server-side `kashtep` Cloud Function
 /// so the API key never leaves the server.

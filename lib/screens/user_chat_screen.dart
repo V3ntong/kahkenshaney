@@ -663,3 +663,129 @@ class _InputBar extends StatelessWidget {
     );
   }
 }
+
+// ── Failed image upload (retry affordance) ─────────────────────────────────
+
+/// A picked image whose upload failed *after* pre-flight validation.
+/// Kept in state so the failure stays visible in the conversation until the
+/// user retries or discards it.
+class _FailedImageUpload {
+  _FailedImageUpload(this.file, this.message);
+
+  final File file;
+  String message;
+  bool retrying = false;
+}
+
+class _FailedUploadBubble extends StatelessWidget {
+  const _FailedUploadBubble({
+    required this.upload,
+    required this.onRetry,
+    required this.onDiscard,
+  });
+
+  final _FailedImageUpload upload;
+  final VoidCallback onRetry;
+  final VoidCallback onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.errorSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.file(
+                upload.file,
+                width: 180,
+                height: 130,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 180,
+                  height: 130,
+                  color: AppColors.surfaceVariant,
+                  child: const Icon(
+                    Icons.broken_image_rounded,
+                    size: 32,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 16,
+                  color: AppColors.error,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    upload.message,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.3,
+                      color: AppColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton.icon(
+                  onPressed: upload.retrying ? null : onRetry,
+                  icon: upload.retrying
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.error,
+                          ),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Retry'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onDiscard,
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  label: const Text('Discard'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textTertiary,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

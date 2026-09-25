@@ -165,3 +165,6 @@ open → pendingVerification → verified → matched → claimed → resolved �
 - `AuthService` / `FirebaseAuthService` — auth + admin lookup (`lookupAdminUid`, `isAdminEmail`) + OTP/password functions
 - `AdminRepository` — moderation, status ladder, resolved
 - `ProfileProvider` — user doc + posts + stats streams
+
+
+ohahay

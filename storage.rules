@@ -36,9 +36,12 @@ service firebase.storage {
     match /chat_images/{fileName} {
       allow read: if request.auth != null;
 
-      // Any authenticated user may share an image in chat.
+      // Any authenticated user may share an image in chat. The content type
+      // must be an image and the size must stay under the same 10 MB cap the
+      // client validates before uploading (ChatImageUploader).
       allow create: if request.auth != null
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size <= 10 * 1024 * 1024;
 
       // Only the uploader (via custom metadata) can delete.
       allow delete: if request.auth != null

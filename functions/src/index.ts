@@ -1138,3 +1138,6 @@ export const confirmMatch = onCall(async (request) => {
 
 /** The single designated admin email (mirrors the client constant). */
 const ADMIN_EMAIL = 'mugiwaranomelvin@gmail.com';
+
+// KashTeP assistant (callable Gemini proxy) — see ./chatbot.ts
+export { kashtep } from './chatbot';
