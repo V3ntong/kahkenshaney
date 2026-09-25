@@ -1,5 +1,5 @@
 import * as nodemailer from 'nodemailer';
-import { renderEmailTemplate } from './templates';
+import { renderAdminInviteTemplate, renderEmailTemplate } from './templates';
 
 const APP_NAME = (process.env.APP_NAME ?? 'KAH KEN SHA NEY').trim();
 const MAIL_FROM = (process.env.MAIL_FROM ?? 'no-reply@localhost').trim();
@@ -103,6 +103,35 @@ export async function sendOtpEmail(options: SendOtpOptions): Promise<void> {
     otp: options.otp,
     purpose: options.purpose,
     expiresInMinutes: options.expiresInMinutes,
+  });
+
+  await getTransporter().sendMail({
+    from: MAIL_FROM,
+    to: options.to,
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+  });
+}
+
+export interface AdminInviteEmailOptions {
+  to: string;
+  invitedByEmail: string;
+  expiresInDays: number;
+}
+
+/**
+ * Sends the administrator invitation email. Throws on transport failure —
+ * callers decide whether delivery failure should fail the whole invite
+ * (it usually should not; the in-app prompt still works).
+ */
+export async function sendAdminInviteEmail(
+  options: AdminInviteEmailOptions
+): Promise<void> {
+  const template = renderAdminInviteTemplate({
+    appName: APP_NAME,
+    invitedByEmail: options.invitedByEmail,
+    expiresInDays: options.expiresInDays,
   });
 
   await getTransporter().sendMail({

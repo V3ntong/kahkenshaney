@@ -114,3 +114,86 @@ export function renderEmailTemplate(
 
   return { subject: copy.subject, text, html };
 }
+
+// ── Admin invitation ────────────────────────────────────────────────────────
+
+export interface AdminInviteTemplateOptions {
+  appName: string;
+  invitedByEmail: string;
+  expiresInDays: number;
+}
+
+/**
+ * Invitation email for a prospective administrator. Deliberately has no
+ * one-click accept link: acceptance happens inside the authenticated app so
+ * the server can verify the caller's email (respondToAdminInvite).
+ */
+export function renderAdminInviteTemplate(
+  opts: AdminInviteTemplateOptions
+): { subject: string; text: string; html: string } {
+  const appName = escapeHtml(opts.appName);
+  const invitedBy = escapeHtml(opts.invitedByEmail);
+  const subject = `${appName}: you have been invited as an administrator`;
+
+  const text = [
+    'Administrator invitation',
+    '',
+    'You have been invited to join the administrators of ' + opts.appName + '.',
+    '',
+    'To accept:',
+    '1. Open ' + opts.appName + ' and sign in with this email address.',
+    '2. Go to the Home screen.',
+    '3. Tap Accept on the administrator invitation prompt.',
+    '',
+    `This invitation expires in ${opts.expiresInDays} days.`,
+    '',
+    `Invited by: ${opts.invitedByEmail}`,
+    '',
+    'If you were not expecting this invitation, you can safely ignore this email.',
+    '',
+    `- ${opts.appName}`,
+  ].join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body style="margin:0;padding:0;background:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F8FAFC;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;background:#ffffff;border-radius:16px;box-shadow:0 4px 16px rgba(15,23,42,0.08);overflow:hidden;">
+            <tr>
+              <td style="background:linear-gradient(135deg,#3B82F6,#1E40AF);padding:28px 32px;">
+                <div style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">${appName}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <h1 style="margin:0 0 8px;color:#0F172A;font-size:22px;font-weight:700;">Administrator invitation</h1>
+                <p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.6;">You have been invited to join the administrators of ${appName}.</p>
+                <div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:12px;padding:16px 20px;margin:0 0 24px;">
+                  <p style="margin:0 0 8px;color:#1E40AF;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">To accept</p>
+                  <p style="margin:0;color:#3730A3;font-size:14px;line-height:1.7;">1. Open ${appName} and sign in with this email address.<br />2. Go to the Home screen.<br />3. Tap <strong>Accept</strong> on the administrator invitation prompt.</p>
+                </div>
+                <p style="margin:0 0 8px;color:#64748B;font-size:13px;line-height:1.6;">This invitation expires in ${opts.expiresInDays} days.</p>
+                <p style="margin:0 0 8px;color:#64748B;font-size:13px;line-height:1.6;">Invited by: ${invitedBy}</p>
+                <p style="margin:16px 0 0;color:#94A3B8;font-size:13px;line-height:1.6;">If you were not expecting this invitation, you can safely ignore this email.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px;border-top:1px solid #E2E8F0;color:#94A3B8;font-size:12px;text-align:center;">
+                &copy; ${new Date().getFullYear()} ${appName}. All rights reserved.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return { subject, text, html };
+}

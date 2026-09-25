@@ -17,7 +17,7 @@ import {
   validateMatchConfirm,
   validateResolve,
 } from './claims';
-import { sendOtpEmail } from './email';
+import { sendAdminInviteEmail, sendOtpEmail } from './email';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {
   isValidEmail,
@@ -1139,5 +1139,350 @@ export const confirmMatch = onCall(async (request) => {
 /** The single designated admin email (mirrors the client constant). */
 const ADMIN_EMAIL = 'mugiwaranomelvin@gmail.com';
 
-// KashTeP assistant (callable Gemini proxy) � see ./chatbot.ts
+// ── Admin invites ───────────────────────────────────────────────────────────
+
+/**
+ * Replaces the old `adminEmails` collection, which had no security rules and
+ * therefore always denied client reads/writes (permission-denied). Invites
+ * are now written only by these server callables; the client just streams
+ * what its rules allow (admin reads everything, invitee reads their own).
+ */
+const ADMIN_INVITES_COLLECTION = 'adminInvites';
+const INVITE_TTL_DAYS = 14;
+const INVITE_TTL_MS = INVITE_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+/** Canonical email for a caller, lowercased. Throws when unavailable. */
+async function verifiedCallerEmail(uid: string): Promise<string> {
+  try {
+    const user = await admin.auth().getUser(uid);
+    return normalizeEmail(user.email);
+  } catch {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+}
+
+/** Admin gate: the designated admin email or any user with `isAdmin: true`. */
+async function requireAdminCaller(uid: string): Promise<string> {
+  const email = await verifiedCallerEmail(uid);
+  if (email === ADMIN_EMAIL) return email;
+
+  const snap = await db.collection('users').doc(uid).get();
+  if (snap.exists && snap.data()?.isAdmin === true) return email;
+
+  throw new HttpsError(
+    'permission-denied',
+    'Only administrators can manage admin access.'
+  );
+}
+
+/** Finds the current pending invite for [email], if any. */
+async function findPendingInvite(
+  email: string
+): Promise<FirebaseFirestore.QueryDocumentSnapshot | null> {
+  const snap = await db
+    .collection(ADMIN_INVITES_COLLECTION)
+    .where('email', '==', email)
+    .limit(20)
+    .get();
+  return (
+    snap.docs.find((doc) => doc.data().status === 'pending') ?? null
+  ) as FirebaseFirestore.QueryDocumentSnapshot | null;
+}
+
+/** True when a user document already exists with `isAdmin: true`. */
+async function findActiveAdminUser(
+  email: string
+): Promise<FirebaseFirestore.QueryDocumentSnapshot | null> {
+  const snap = await db
+    .collection('users')
+    .where('email', '==', email)
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  const doc = snap.docs[0];
+  return doc.data()?.isAdmin === true ? doc : null;
+}
+
+/** Notifies the invited user in-app when they already have an account. */
+async function notifyInvitedUser(email: string): Promise<void> {
+  try {
+    const snap = await db
+      .collection('users')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+    if (snap.empty) return;
+    await notifyUser(
+      snap.docs[0].id,
+      'Admin invitation',
+      'You have been invited to become an administrator. Open the app to accept.',
+      'admin_invite'
+    );
+  } catch (error) {
+    console.warn('[adminInvites] in-app notification failed:', error);
+  }
+}
+
+/** Delivery failure never fails the invite — the in-app prompt still works. */
+async function sendInviteEmail(
+  email: string,
+  invitedByEmail: string
+): Promise<boolean> {
+  try {
+    await sendAdminInviteEmail({
+      to: email,
+      invitedByEmail,
+      expiresInDays: INVITE_TTL_DAYS,
+    });
+    return true;
+  } catch (error) {
+    console.warn('[adminInvites] email delivery failed:', error);
+    return false;
+  }
+}
+
+/** Creates a pending invite, or refreshes/resends the existing one. */
+async function createOrResendInvite(
+  email: string,
+  invitedByEmail: string,
+  mode: 'invite' | 'resend'
+): Promise<{
+  invited: boolean;
+  resent: boolean;
+  inviteId: string;
+  emailSent: boolean;
+}> {
+  const activeAdmin = await findActiveAdminUser(email);
+  if (activeAdmin) {
+    throw new HttpsError(
+      'failed-precondition',
+      'That user is already an administrator.'
+    );
+  }
+
+  const existing = await findPendingInvite(email);
+  if (mode === 'resend' && !existing) {
+    throw new HttpsError(
+      'not-found',
+      'There is no pending invitation for that email.'
+    );
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+  let inviteId: string;
+
+  if (existing) {
+    inviteId = existing.id;
+    await existing.ref.set(
+      {
+        status: 'pending',
+        invitedByEmail,
+        sentAt: now,
+        expiresAt,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } else {
+    const created = await db.collection(ADMIN_INVITES_COLLECTION).add({
+      email,
+      status: 'pending',
+      invitedBy: invitedByEmail,
+      invitedByEmail,
+      createdAt: now,
+      sentAt: now,
+      expiresAt,
+      updatedAt: now,
+    });
+    inviteId = created.id;
+  }
+
+  const emailSent = await sendInviteEmail(email, invitedByEmail);
+  await notifyInvitedUser(email);
+
+  return { invited: true, resent: Boolean(existing), inviteId, emailSent };
+}
+
+/** Callable: sends (or refreshes) an administrator invitation. */
+export const inviteAdmin = onCall(
+  { secrets: [...SMTP_SECRETS] },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError('unauthenticated', 'You must be signed in.');
+    }
+    const callerEmail = await requireAdminCaller(uid);
+
+    const email = normalizeEmail(request.data?.email);
+    if (!isValidEmail(email)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'Please enter a valid email address.'
+      );
+    }
+    if (email === callerEmail) {
+      throw new HttpsError(
+        'failed-precondition',
+        'You already have administrator access.'
+      );
+    }
+
+    return createOrResendInvite(email, callerEmail, 'invite');
+  }
+);
+
+/** Callable: re-sends an existing pending invitation. */
+export const resendAdminInvite = onCall(
+  { secrets: [...SMTP_SECRETS] },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError('unauthenticated', 'You must be signed in.');
+    }
+    const callerEmail = await requireAdminCaller(uid);
+
+    const email = normalizeEmail(request.data?.email);
+    if (!isValidEmail(email)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'Please enter a valid email address.'
+      );
+    }
+
+    return createOrResendInvite(email, callerEmail, 'resend');
+  }
+);
+
+/** Callable: revokes a pending invitation. */
+export const revokeAdminInvite = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  await requireAdminCaller(uid);
+
+  const email = normalizeEmail(request.data?.email);
+  if (!isValidEmail(email)) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Please enter a valid email address.'
+    );
+  }
+
+  const pending = await findPendingInvite(email);
+  if (!pending) {
+    throw new HttpsError(
+      'not-found',
+      'There is no pending invitation for that email.'
+    );
+  }
+
+  await pending.ref.set(
+    {
+      status: 'revoked',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return { revoked: true };
+});
+
+/**
+ * Callable: the invitee accepts their invitation.
+ *
+ * Security note: the grant is keyed on the caller's *authenticated* email, so
+ * the client can only accept an invitation issued to its own account.
+ */
+export const respondToAdminInvite = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  const email = await verifiedCallerEmail(uid);
+  if (!email) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Your account has no email address.'
+    );
+  }
+
+  const pending = await findPendingInvite(email);
+  if (!pending) {
+    throw new HttpsError(
+      'not-found',
+      'There is no pending admin invitation for this account.'
+    );
+  }
+
+  const expiresAt = pending.data().expiresAt?.toDate?.() as Date | undefined;
+  if (expiresAt && expiresAt.getTime() < Date.now()) {
+    await pending.ref.set(
+      {
+        status: 'expired',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    throw new HttpsError(
+      'failed-precondition',
+      'That invitation has expired. Ask an administrator to send a new one.'
+    );
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await db
+    .collection('users')
+    .doc(uid)
+    .set({ isAdmin: true, email, updatedAt: now }, { merge: true });
+  await pending.ref.set(
+    { status: 'accepted', acceptedBy: uid, acceptedAt: now, updatedAt: now },
+    { merge: true }
+  );
+
+  return { accepted: true, email };
+});
+
+/** Callable: revokes administrator access from an existing admin. */
+export const removeAdminAccess = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in.');
+  }
+  await requireAdminCaller(uid);
+
+  const targetUid =
+    typeof request.data?.uid === 'string' ? request.data.uid.trim() : '';
+  if (!targetUid) {
+    throw new HttpsError('invalid-argument', 'A user id is required.');
+  }
+  if (targetUid === uid) {
+    throw new HttpsError(
+      'failed-precondition',
+      'You cannot remove your own administrator access.'
+    );
+  }
+
+  const target = await db.collection('users').doc(targetUid).get();
+  if (!target.exists) {
+    throw new HttpsError('not-found', 'That user no longer exists.');
+  }
+  if (normalizeEmail(target.data()?.email) === ADMIN_EMAIL) {
+    throw new HttpsError(
+      'failed-precondition',
+      'The primary administrator cannot be removed.'
+    );
+  }
+
+  await target.ref.set(
+    {
+      isAdmin: false,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return { removed: true };
+});
+
+// KashTeP assistant (callable Gemini proxy) — see ./chatbot.ts
 export { kashtep } from './chatbot';
