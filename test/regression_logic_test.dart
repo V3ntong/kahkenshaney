@@ -63,7 +63,7 @@ void main() {
         SupportChatService.peerChatId(uidA, uidB),
         SupportChatService.peerChatId(uidB, uidA),
       );
-      expect(SupportChatService.peerChatId(uidA, uidB), 'peer_userB456_UserA123');
+      expect(SupportChatService.peerChatId(uidA, uidB), 'peer_UserA123_userB456');
     });
   });
 

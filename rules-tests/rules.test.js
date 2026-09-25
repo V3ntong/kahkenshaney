@@ -330,3 +330,71 @@ test('chats: nobody can delete a thread', async () => {
   const { deleteDoc } = require('firebase/firestore');
   await assertFails(deleteDoc(doc(db(ALICE), `chats/${peerChatId(ALICE, BOB)}`)));
 });
+
+// ── admin-grant path (users/{uid}) ────────────────────────────────────────
+// Regression: admin assignment happens server-side only. A normal user must
+// never be able to write `isAdmin`/`role` themselves, either at creation or
+// by updating their own document afterwards.
+
+test('admin grant: a user can create their own profile without privileged fields', async () => {
+  await assertSucceeds(
+    setDoc(doc(db(ALICE), `users/${ALICE}`), { name: 'Alice', email: 'alice@example.com' }),
+  );
+});
+
+test('admin grant: a user cannot create their own profile with isAdmin set', async () => {
+  await assertFails(
+    setDoc(doc(db(ALICE), `users/${ALICE}`), { name: 'Alice', isAdmin: true }),
+  );
+  await assertFails(
+    setDoc(doc(db(ALICE), `users/${ALICE}`), { name: 'Alice', role: 'admin' }),
+  );
+});
+
+test('admin grant: a user cannot create a profile under another uid', async () => {
+  await assertFails(
+    setDoc(doc(db(MALLORY), `users/${ALICE}`), { name: 'Spoofed Alice' }),
+  );
+});
+
+test('admin grant: a user cannot self-promote by updating their own document', async () => {
+  await seed((firestore) =>
+    setDoc(doc(firestore, `users/${ALICE}`), { name: 'Alice', email: 'alice@example.com' }),
+  );
+  await assertFails(updateDoc(doc(db(ALICE), `users/${ALICE}`), { isAdmin: true }));
+  await assertFails(updateDoc(doc(db(ALICE), `users/${ALICE}`), { role: 'admin' }));
+});
+
+test('admin grant: a user can still update their own profile fields', async () => {
+  await seed((firestore) =>
+    setDoc(doc(firestore, `users/${ALICE}`), { name: 'Alice', email: 'alice@example.com' }),
+  );
+  await assertSucceeds(updateDoc(doc(db(ALICE), `users/${ALICE}`), { name: 'Alice Updated' }));
+});
+
+test('admin grant: an admin can grant isAdmin to another user', async () => {
+  await seed(async (firestore) => {
+    await setDoc(doc(firestore, `users/${ADMIN}`), { isAdmin: true });
+    await setDoc(doc(firestore, `users/${ALICE}`), { name: 'Alice' });
+  });
+  await assertSucceeds(updateDoc(doc(db(ADMIN), `users/${ALICE}`), { isAdmin: true }));
+});
+
+test('admin grant: a non-admin cannot grant isAdmin to anyone', async () => {
+  await seed(async (firestore) => {
+    await setDoc(doc(firestore, `users/${ADMIN}`), { isAdmin: true });
+    await setDoc(doc(firestore, `users/${ALICE}`), { name: 'Alice' });
+  });
+  await assertFails(updateDoc(doc(db(MALLORY), `users/${ALICE}`), { isAdmin: true }));
+});
+
+test('admin grant: nobody can delete another user\'s profile', async () => {
+  await seed((firestore) => setDoc(doc(firestore, `users/${ALICE}`), { name: 'Alice' }));
+  await assertFails(deleteDoc(doc(db(MALLORY), `users/${ALICE}`)));
+  await assertSucceeds(deleteDoc(doc(db(ALICE), `users/${ALICE}`)));
+});
+
+test('admin invites: no client can write the adminInvites collection', async () => {
+  await assertFails(setDoc(doc(db(ADMIN), 'adminInvites/inv1'), { email: 'x@example.com' }));
+  await assertFails(setDoc(doc(db(ALICE), 'adminInvites/inv1'), { email: 'x@example.com' }));
+});

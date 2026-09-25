@@ -130,18 +130,52 @@ service cloud.firestore {
 
     // ── chats (1-on-1 support messages) ─────────────────────────────────
     match /chats/{chatId} {
+
+      // True when the caller's UID is one of the two halves encoded in a
+      // peer-chat document ID (`peer_{uidA}_{uidB}`, sorted client-side).
+      // Firebase Auth UIDs only contain characters that are literal in RE2,
+      // so the UID can be interpolated into this pattern safely.
+      function inPeerId() {
+        return chatId.matches('peer_' + request.auth.uid + '_.+')
+            || chatId.matches('peer_.+_' + request.auth.uid);
+      }
+
+      // Read: the thread owner (support chats), an admin, one of the two
+      // users encoded in a peer-chat ID (so `ensurePeerChat` can probe a
+      // thread that does not exist yet), or a recorded participant of an
+      // existing thread. The `resource == null` branch must come before any
+      // `resource.data` access — reading a missing document would otherwise
+      // abort with a null-value error and deny the existence probe.
       allow read: if request.auth != null
         && (request.auth.uid == chatId
-            || request.auth.uid in resource.data.participants
-            || isAdmin());
+            || isAdmin()
+            || (resource == null && inPeerId())
+            || (resource != null
+                && 'participants' in resource.data
+                && request.auth.uid in resource.data.participants));
 
+      // Create: support threads only under the caller's own UID (with the
+      // caller among the participants), and peer threads only when the
+      // participants array is exactly the two UIDs encoded in the document
+      // ID and the caller is one of them. This stops a user from opening a
+      // thread under someone else's UID or hijacking a peer-chat ID with a
+      // mismatched participants array.
       allow create: if request.auth != null
-        && (request.auth.uid == chatId
-            || request.auth.uid in request.resource.data.participants);
+        && ((request.auth.uid == chatId
+                && request.auth.uid in request.resource.data.participants)
+            || (request.resource.data.participants is list
+                && request.resource.data.participants.size() == 2
+                && request.auth.uid in request.resource.data.participants
+                && (chatId == 'peer_' + request.resource.data.participants.get(0)
+                        + '_' + request.resource.data.participants.get(1)
+                    || chatId == 'peer_' + request.resource.data.participants.get(1)
+                        + '_' + request.resource.data.participants.get(0))));
 
       allow update: if request.auth != null
         && (request.auth.uid == chatId
-            || request.auth.uid in resource.data.participants
+            || (resource != null
+                && 'participants' in resource.data
+                && request.auth.uid in resource.data.participants)
             || isAdmin());
 
       allow delete: if false;
