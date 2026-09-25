@@ -173,10 +173,11 @@ class ChatService {
     } on FirebaseFunctionsException catch (e) {
       debugPrint('[ChatService] Cloud Function error: ${e.code} — ${e.message}');
 
-      // An App Check enforcement failure on a callable can surface as
-      // NOT_FOUND / PERMISSION_DENIED rather than a dedicated code.
-      final appCheckActive = await _isAppCheckActive();
-      if (!appCheckActive && _isAppCheckShaped(e.code)) {
+      // App Check reports itself with its own codes. Do NOT blame App Check
+      // for anything else: the previous mapping treated `not-found` (which
+      // really meant "this function is not deployed") as an App Check
+      // failure, which sent users down the wrong troubleshooting path.
+      if (_isAppCheckCode(e.code)) {
         throw ChatSendException(
           'Unable to verify app security. Please update the app and try again.',
           code: e.code,
@@ -200,8 +201,8 @@ class ChatService {
   }
 
   /// Best-effort App Check token refresh. Failure is non-fatal: the SDK
-  /// falls back to its cached token (and the backend may not enforce App
-  /// Check at all).
+  /// falls back to its cached token (and App Check is currently not enforced
+  /// on this project's functions, per the function logs).
   Future<void> _refreshAppCheckToken() async {
     try {
       await FirebaseAppCheck.instance.getToken(true);
@@ -210,9 +211,11 @@ class ChatService {
     }
   }
 
-  /// Codes that App Check enforcement commonly produces for callables.
-  bool _isAppCheckShaped(String code) {
-    return code == 'not-found' || code == 'app-check-unauthorized';
+  /// Only these codes are genuinely App Check failures.
+  bool _isAppCheckCode(String code) {
+    return code == 'app-check-unauthorized' ||
+        code == 'app-check-token-fetch-failed' ||
+        code == 'app-check-throttled';
   }
 
   bool _isRetryable(String code) {
@@ -221,16 +224,6 @@ class ChatService {
         code == 'resource-exhausted' ||
         code == 'internal' ||
         code == 'unknown';
-  }
-
-  /// Checks whether App Check was successfully activated at startup.
-  Future<bool> _isAppCheckActive() async {
-    try {
-      final token = await FirebaseAppCheck.instance.getToken(false);
-      return token != null && token.isNotEmpty;
-    } catch (e) {
-      return false;
-    }
   }
 
   FirebaseFunctions _defaultFunctions() {
@@ -257,7 +250,8 @@ class ChatService {
       case 'invalid-argument':
         return 'That message is too long. Please shorten it and try again.';
       case 'not-found':
-        return 'The chat service is currently unavailable. Please try again later.';
+        return 'The assistant service is not available in this build yet. '
+            'Please update the app and try again.';
       case 'internal':
         return 'Something went wrong on our end. Please try again.';
       default:
