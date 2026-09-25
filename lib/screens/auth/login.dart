@@ -369,7 +369,7 @@ class _SavedAccountTile extends StatelessWidget {
                       ? NetworkImage(photoUrl)
                       : null,
                   onForegroundImageError:
-                      photoUrl != null ? (_, __) {} : null,
+                      photoUrl != null ? (_, _) {} : null,
                   child: Text(
                     account.initial,
                     style: const TextStyle(

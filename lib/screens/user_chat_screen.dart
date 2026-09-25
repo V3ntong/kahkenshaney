@@ -416,8 +416,8 @@ class _MessageBubble extends StatelessWidget {
         barrierColor: Colors.black87,
         barrierDismissible: true,
         transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (_, __, ___) => _FullScreenImage(imageUrl: imageUrl),
-        transitionsBuilder: (_, anim, __, child) {
+        pageBuilder: (_, _, _) => _FullScreenImage(imageUrl: imageUrl),
+        transitionsBuilder: (_, anim, _, child) {
           return FadeTransition(opacity: anim, child: child);
         },
       ),
@@ -480,7 +480,7 @@ class _MessageBubble extends StatelessWidget {
                         ),
                       );
                     },
-                    errorBuilder: (_, __, ___) => Container(
+                    errorBuilder: (_, _, _) => Container(
                       width: 200,
                       height: 150,
                       decoration: BoxDecoration(
@@ -564,7 +564,7 @@ class _FullScreenImage extends StatelessWidget {
                       child: CircularProgressIndicator(color: Colors.white),
                     );
                   },
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorBuilder: (_, _, _) => const Center(
                     child: Icon(Icons.broken_image_rounded,
                         size: 48, color: Colors.white54),
                   ),
@@ -714,7 +714,7 @@ class _FailedUploadBubble extends StatelessWidget {
                 width: 180,
                 height: 130,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, _, _) => Container(
                   width: 180,
                   height: 130,
                   color: AppColors.surfaceVariant,

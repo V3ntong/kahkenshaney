@@ -77,6 +77,9 @@ class _AdminResolvedScreenState extends State<AdminResolvedScreen> {
                     lastDate: DateTime.now().add(const Duration(days: 365)),
                   );
                   if (pickedDate != null) {
+                    // The dialog context must still be mounted after the
+                    // awaited date picker before it can drive a second one.
+                    if (!ctx.mounted) return;
                     final pickedTime = await showTimePicker(
                       context: ctx,
                       initialTime: TimeOfDay.now(),
@@ -281,7 +284,7 @@ class _AdminResolvedScreenState extends State<AdminResolvedScreen> {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final item = items[index];
               return _ResolvedCard(

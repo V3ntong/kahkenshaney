@@ -54,7 +54,6 @@ class HomeFeed extends StatefulWidget {
 class _HomeFeedState extends State<HomeFeed> {
   StreamSubscription<int>? _notifSub;
   int _notificationCount = 0;
-  bool _notificationsViewed = false;
 
   @override
   void initState() {
@@ -233,7 +232,7 @@ class _HomeFeedState extends State<HomeFeed> {
         onNotifications: widget.onNotifications ??
             () => _comingSoon('Notifications'),
         onAvatarTap: _openAccountMenu,
-        notificationCount: _notificationsViewed ? 0 : _notificationCount,
+        notificationCount: _notificationCount,
       ),
       const SizedBox(height: 20),
       const AdminInviteBanner(),
@@ -636,7 +635,7 @@ class _RecentlyReportedSection extends StatelessWidget {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: recent.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    separatorBuilder: (_, _) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
                       return FadeSlideInWidget(
                         delay: FadeSlideInWidget.staggerDelay(

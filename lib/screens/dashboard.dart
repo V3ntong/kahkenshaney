@@ -92,9 +92,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (uid == null) return;
     _notifSub = firestore_notif.NotificationService()
         .streamUnreadCount(uid)
-        .listen((count) {
+        .listen((unread) {
       if (!mounted) return;
-      setState(() => _notificationCount = count);
+      setState(() => _notificationCount = unread);
     }, onError: (_) {});
   }
 

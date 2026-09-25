@@ -950,7 +950,7 @@ class _RelatedItemsSection extends StatelessWidget {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: related.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   return SizedBox(
                     width: 140,
@@ -1160,7 +1160,7 @@ class _FullScreenPhotoViewerState extends State<_FullScreenPhotoViewer> {
                     child: CircularProgressIndicator(color: Colors.white),
                   );
                 },
-                errorBuilder: (_, __, ___) => const Center(
+                errorBuilder: (_, _, _) => const Center(
                   child: Icon(
                     Icons.broken_image_rounded,
                     size: 48,

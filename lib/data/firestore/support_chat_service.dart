@@ -127,7 +127,7 @@ class SupportChatService {
       'text': text.trim(),
       'isAdmin': isAdmin,
       'timestamp': FieldValue.serverTimestamp(),
-      if (imageUrl != null) 'imageUrl': imageUrl,
+      'imageUrl': ?imageUrl,
     });
 
     // Update chat metadata.
@@ -280,7 +280,7 @@ class SupportChatService {
       'text': text.trim(),
       'isAdmin': false,
       'timestamp': FieldValue.serverTimestamp(),
-      if (imageUrl != null) 'imageUrl': imageUrl,
+      'imageUrl': ?imageUrl,
     });
 
     batch.update(chatRef, {

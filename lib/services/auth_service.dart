@@ -268,7 +268,7 @@ class FirebaseAuthService implements AuthService {
     } on FirebaseAuthException catch (e) {
       return AuthFailure(_authErrorToMessage(e));
     } catch (e) {
-      print('[AuthService] register unexpected error: $e');
+      debugPrint('[AuthService] register unexpected error: $e');
       return const AuthFailure(
         'Something went wrong during registration. Please try again.',
       );

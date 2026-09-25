@@ -58,9 +58,8 @@ class ChatSendException implements Exception {
 class ChatService {
   ChatService({
     FirebaseFirestore? firestore,
-    FirebaseFunctions? functions,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions = functions;
+    this._functions,
+  }) : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions? _functions;

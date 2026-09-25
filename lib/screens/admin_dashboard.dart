@@ -86,9 +86,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   StreamSubscription<int>? _adminUnreadSub;
 
   void _listenAdminUnread() {
-    _adminUnreadSub = _adminUnreadStream?.listen((count) {
+    _adminUnreadSub = _adminUnreadStream?.listen((unread) {
       if (!mounted) return;
-      setState(() => _adminUnreadCount = count);
+      setState(() => _adminUnreadCount = unread);
     });
   }
 
@@ -950,7 +950,7 @@ class _DashboardData {
 
     final top = sorted.take(5).toList();
     final remainder = sorted.length > 5
-        ? sorted.skip(5).fold<int>(0, (sum, e) => sum + e.value)
+        ? sorted.skip(5).fold<int>(0, (total, e) => total + e.value)
         : 0;
 
     final slices = <_CategorySlice>[];
@@ -1441,7 +1441,7 @@ class _DonutChartPainter extends CustomPainter {
   }
 
   double _total() =>
-      slices.fold(0.0, (sum, s) => sum + s.value);
+      slices.fold(0.0, (total, s) => total + s.value);
 
   @override
   bool shouldRepaint(_DonutChartPainter oldDelegate) =>

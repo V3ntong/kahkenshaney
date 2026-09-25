@@ -20,12 +20,12 @@ Future<void> main() async {
   final storage = FirebaseStorage.instance;
   final firestore = FirebaseFirestore.instance;
 
-  print('Scanning lost_and_found/ for orphaned images…');
+  debugPrint('Scanning lost_and_found/ for orphaned images…');
 
   final allPaths = <(String url, String path)>[];
   await _scanFolder(storage.ref('lost_and_found'), allPaths);
 
-  print('Found ${allPaths.length} images in Storage.');
+  debugPrint('Found ${allPaths.length} images in Storage.');
 
   // Collect every storagePath already referenced in Firestore.
   final existingPaths = <String>{};
@@ -43,7 +43,7 @@ Future<void> main() async {
     }
   }
 
-  print('Firestore already references ${existingPaths.length} paths.');
+  debugPrint('Firestore already references ${existingPaths.length} paths.');
 
   var created = 0;
   for (final entry in allPaths) {
@@ -70,10 +70,10 @@ Future<void> main() async {
     });
 
     created++;
-    print('  Created doc for $path');
+    debugPrint('  Created doc for $path');
   }
 
-  print('Migration complete. Created $created document(s).');
+  debugPrint('Migration complete. Created $created document(s).');
 }
 
 Future<void> _scanFolder(
@@ -86,7 +86,7 @@ Future<void> _scanFolder(
       final url = await item.getDownloadURL();
       results.add((url, item.fullPath));
     } catch (e) {
-      print('  Skipping ${item.fullPath}: $e');
+      debugPrint('  Skipping ${item.fullPath}: $e');
     }
   }
   for (final prefix in list.prefixes) {

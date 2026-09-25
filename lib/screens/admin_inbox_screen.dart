@@ -337,7 +337,7 @@ class _ChatTileState extends State<_ChatTile> {
                         ),
                       );
                     },
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         _initialLetter(initial, hasUnread),
                   )
                 : _initialLetter(initial, hasUnread),

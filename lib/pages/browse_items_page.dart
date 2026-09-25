@@ -143,8 +143,6 @@ class _BrowseTabState extends State<_BrowseTab>
     super.build(context);
     final isLost = widget.kind == ItemKind.lost;
     final accent = isLost ? AppColors.error : AppColors.success;
-    final accentSurface =
-        isLost ? AppColors.errorSurface : AppColors.successSurface;
 
     return Column(
       children: [
