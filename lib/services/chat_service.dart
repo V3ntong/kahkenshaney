@@ -176,7 +176,7 @@ class ChatService {
       // for anything else: the previous mapping treated `not-found` (which
       // really meant "this function is not deployed") as an App Check
       // failure, which sent users down the wrong troubleshooting path.
-      if (_isAppCheckCode(e.code)) {
+      if (isAppCheckCode(e.code)) {
         throw ChatSendException(
           'Unable to verify app security. Please update the app and try again.',
           code: e.code,
@@ -185,7 +185,7 @@ class ChatService {
       }
 
       throw ChatSendException(
-        _userFacingError(e.code),
+        userFacingError(e.code),
         code: e.code,
         retryable: _isRetryable(e.code),
       );
@@ -211,7 +211,12 @@ class ChatService {
   }
 
   /// Only these codes are genuinely App Check failures.
-  bool _isAppCheckCode(String code) {
+  ///
+  /// Public for tests: a prior release misclassified the callable's
+  /// `not-found` code (function not deployed) as an App Check failure,
+  /// which sent users down the wrong troubleshooting path.
+  @visibleForTesting
+  static bool isAppCheckCode(String code) {
     return code == 'app-check-unauthorized' ||
         code == 'app-check-token-fetch-failed' ||
         code == 'app-check-throttled';
@@ -232,7 +237,8 @@ class ChatService {
     return FirebaseFunctions.instanceFor(region: _region);
   }
 
-  String _userFacingError(String? code) {
+  @visibleForTesting
+  static String userFacingError(String? code) {
     switch (code) {
       case 'unauthenticated':
         return 'You are not signed in. Please log in to use the assistant.';
