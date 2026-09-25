@@ -24,6 +24,7 @@ const {
   setDoc,
   updateDoc,
   addDoc,
+  deleteDoc,
   collection,
 } = require('firebase/firestore');
 
@@ -327,8 +328,8 @@ test('chats: nobody can delete a thread', async () => {
   await seed((firestore) =>
     setDoc(doc(firestore, `chats/${peerChatId(ALICE, BOB)}`), peerChatData([ALICE, BOB])),
   );
-  const { deleteDoc } = require('firebase/firestore');
-  await assertFails(deleteDoc(doc(db(ALICE), `chats/${peerChatId(ALICE, BOB)}`)));
+  const { deleteDoc: deleteDocInner } = require('firebase/firestore');
+  await assertFails(deleteDocInner(doc(db(ALICE), `chats/${peerChatId(ALICE, BOB)}`)));
 });
 
 // ── admin-grant path (users/{uid}) ────────────────────────────────────────

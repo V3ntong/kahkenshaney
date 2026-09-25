@@ -166,10 +166,10 @@ service cloud.firestore {
             || (request.resource.data.participants is list
                 && request.resource.data.participants.size() == 2
                 && request.auth.uid in request.resource.data.participants
-                && (chatId == 'peer_' + request.resource.data.participants.get(0)
-                        + '_' + request.resource.data.participants.get(1)
-                    || chatId == 'peer_' + request.resource.data.participants.get(1)
-                        + '_' + request.resource.data.participants.get(0))));
+                && (chatId == 'peer_' + request.resource.data.participants[0]
+                        + '_' + request.resource.data.participants[1]
+                    || chatId == 'peer_' + request.resource.data.participants[1]
+                        + '_' + request.resource.data.participants[0])));
 
       allow update: if request.auth != null
         && (request.auth.uid == chatId
