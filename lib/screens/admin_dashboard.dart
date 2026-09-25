@@ -276,7 +276,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           usersStream: _usersStream,
           repositoryAvailable: _repository != null,
           onNotice: _showNotice,
-          unreadCount: _adminUnreadCount,
         );
       case 1:
         return AdminReviewQueueScreen(adminUid: _auth.currentUser?.uid ?? '');
@@ -549,7 +548,6 @@ class _DashboardOverview extends StatelessWidget {
     required this.usersStream,
     required this.repositoryAvailable,
     required this.onNotice,
-    this.unreadCount = 0,
   });
 
   final String adminName;
@@ -557,7 +555,6 @@ class _DashboardOverview extends StatelessWidget {
   final Stream<int>? usersStream;
   final bool repositoryAvailable;
   final ValueChanged<String> onNotice;
-  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -576,11 +573,7 @@ class _DashboardOverview extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Header(
-                adminName: adminName,
-                onNotice: onNotice,
-                unreadCount: unreadCount,
-              ),
+              _Header(adminName: adminName),
               const SizedBox(height: 20),
               if (!repositoryAvailable)
                 const _UnavailableNotice(),
@@ -729,11 +722,9 @@ class _DashboardOverview extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.adminName, required this.onNotice, this.unreadCount = 0});
+  const _Header({required this.adminName});
 
   final String adminName;
-  final ValueChanged<String> onNotice;
-  final int unreadCount;
 
   String get _today {
     final now = DateTime.now();
@@ -799,51 +790,6 @@ class _Header extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
-            Material(
-              color: AppColors.surface,
-              shape: const CircleBorder(
-                side: BorderSide(color: AppColors.cardBorder),
-              ),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => onNotice('Notifications'),
-                child: Ink(
-                  width: 40,
-                  height: 40,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Positioned.fill(
-                        child: Align(
-                          alignment: Alignment.center,
-                          child: Icon(
-                            Icons.notifications_none_rounded,
-                            size: 20,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      if (unreadCount > 0)
-                        Positioned(
-                          right: 6,
-                          top: 6,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.error,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            _AvatarBadge(initial: adminName[0].toUpperCase(), size: 40),
           ],
         ),
       ],

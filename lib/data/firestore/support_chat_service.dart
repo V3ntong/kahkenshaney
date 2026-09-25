@@ -325,22 +325,47 @@ class SupportChatService {
 
   // ── Get user display name ───────────────────────────────────────────────
 
-  /// Fetches the display name of a user from the `users` collection.
-  Future<String> getUserDisplayName(String uid) async {
+  /// Lightweight public profile used by list/inbox previews.
+  ///
+  /// Contains just what a conversation row needs: display name and the
+  /// user's profile photo (falls back to null when the user never set one).
+  Future<SupportChatUserPreview> getUserPreview(String uid) async {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
-      if (!doc.exists || doc.data() == null) return 'User';
-      final name = doc.data()!['displayName'] as String?;
-      if (name != null && name.trim().isNotEmpty) return name.trim();
-      final email = doc.data()!['email'] as String?;
-      if (email != null && email.trim().isNotEmpty) {
-        // Return part before @ as a fallback name.
-        return email.trim().split('@').first;
+      if (!doc.exists || doc.data() == null) {
+        return const SupportChatUserPreview(displayName: 'User');
       }
-      return 'User';
+      final data = doc.data()!;
+      final name = data['displayName'] as String?;
+      final email = data['email'] as String?;
+      final photo = data['photoUrl'] as String?;
+
+      var displayName = name?.trim() ?? '';
+      if (displayName.isEmpty && email != null && email.trim().isNotEmpty) {
+        displayName = email.trim().split('@').first;
+      }
+      if (displayName.isEmpty) displayName = 'User';
+
+      final photoUrl = (photo == null || photo.trim().isEmpty) ? null : photo.trim();
+      return SupportChatUserPreview(displayName: displayName, photoUrl: photoUrl);
     } catch (e) {
-      debugPrint('[SupportChatService] getUserDisplayName error: $e');
-      return 'User';
+      debugPrint('[SupportChatService] getUserPreview error: $e');
+      return const SupportChatUserPreview(displayName: 'User');
     }
   }
+
+  /// Fetches the display name of a user from the `users` collection.
+  Future<String> getUserDisplayName(String uid) async {
+    final preview = await getUserPreview(uid);
+    return preview.displayName;
+  }
+}
+
+/// Name + profile photo pair returned by
+/// [SupportChatService.getUserPreview].
+class SupportChatUserPreview {
+  const SupportChatUserPreview({required this.displayName, this.photoUrl});
+
+  final String displayName;
+  final String? photoUrl;
 }
