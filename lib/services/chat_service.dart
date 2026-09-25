@@ -133,6 +133,10 @@ class ChatService {
 
   /// Sends [message] to the server-side chatbot Cloud Function and returns
   /// the assistant reply. The API key stays server-side.
+  ///
+  /// Throws [ChatSendException] when the call fails, so the UI can keep the
+  /// user's message on screen and offer a retry instead of rendering an
+  /// error string as if the assistant had replied.
   Future<String> sendMessage(String message) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return '';
@@ -145,6 +149,11 @@ class ChatService {
     }
 
     final fn = _functions ?? _defaultFunctions();
+
+    // Refresh the App Check token right before the call so a stale/expired
+    // token (the usual cause of `app-check-unauthorized` / unexpected
+    // `not-found` responses) is never sent to the backend.
+    await _refreshAppCheckToken();
 
     try {
       final callable = fn.httpsCallable('kashtep');
@@ -164,20 +173,54 @@ class ChatService {
     } on FirebaseFunctionsException catch (e) {
       debugPrint('[ChatService] Cloud Function error: ${e.code} — ${e.message}');
 
-      // Check if the error is likely caused by App Check enforcement.
-      // When App Check is enforced on the backend but not activated on the
-      // client, the SDK may surface a NOT_FOUND error instead of a clear
-      // "app not verified" message.
+      // An App Check enforcement failure on a callable can surface as
+      // NOT_FOUND / PERMISSION_DENIED rather than a dedicated code.
       final appCheckActive = await _isAppCheckActive();
-      if (!appCheckActive && e.code == 'not-found') {
-        return 'Unable to verify app security. Please update the app and try again.';
+      if (!appCheckActive && _isAppCheckShaped(e.code)) {
+        throw ChatSendException(
+          'Unable to verify app security. Please update the app and try again.',
+          code: e.code,
+          retryable: false,
+        );
       }
 
-      return _userFacingError(e.code);
+      throw ChatSendException(
+        _userFacingError(e.code),
+        code: e.code,
+        retryable: _isRetryable(e.code),
+      );
+    } on ChatSendException {
+      rethrow;
     } catch (e) {
       debugPrint('[ChatService] Unexpected error: $e');
-      return 'The AI assistant could not generate a response. Please try again.';
+      throw const ChatSendException(
+        'The AI assistant could not generate a response. Please try again.',
+      );
     }
+  }
+
+  /// Best-effort App Check token refresh. Failure is non-fatal: the SDK
+  /// falls back to its cached token (and the backend may not enforce App
+  /// Check at all).
+  Future<void> _refreshAppCheckToken() async {
+    try {
+      await FirebaseAppCheck.instance.getToken(true);
+    } catch (e) {
+      debugPrint('[ChatService] App Check token refresh failed: $e');
+    }
+  }
+
+  /// Codes that App Check enforcement commonly produces for callables.
+  bool _isAppCheckShaped(String code) {
+    return code == 'not-found' || code == 'app-check-unauthorized';
+  }
+
+  bool _isRetryable(String code) {
+    return code == 'deadline-exceeded' ||
+        code == 'unavailable' ||
+        code == 'resource-exhausted' ||
+        code == 'internal' ||
+        code == 'unknown';
   }
 
   /// Checks whether App Check was successfully activated at startup.
@@ -207,6 +250,12 @@ class ChatService {
         return 'Too many requests. Please wait a moment and try again.';
       case 'deadline-exceeded':
         return 'The assistant is taking too long. Please try again.';
+      case 'unavailable':
+        return 'The assistant is temporarily unavailable. Please try again.';
+      case 'failed-precondition':
+        return 'The assistant is not configured yet. Please try again later.';
+      case 'invalid-argument':
+        return 'That message is too long. Please shorten it and try again.';
       case 'not-found':
         return 'The chat service is currently unavailable. Please try again later.';
       case 'internal':

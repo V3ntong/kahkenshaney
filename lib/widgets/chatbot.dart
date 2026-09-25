@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -54,6 +52,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false;
   bool _historyLoaded = false;
 
+  /// Last failure, kept so the message list can show a persistent inline
+  /// error with a Retry action instead of a transient snackbar.
+  String? _errorText;
+  String? _failedText;
+  bool _errorRetryable = true;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -89,20 +93,45 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _send() async {
-    final text = _controller.text.trim();
+  /// First name used in the empty-state greeting.
+  String get _firstName {
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName?.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName.split(' ').first;
+    }
+    final email = user?.email?.trim();
+    if (email != null && email.isNotEmpty) {
+      return email.split('@').first;
+    }
+    return 'there';
+  }
+
+  Future<void> _send({String? retryText}) async {
+    final isRetry = retryText != null;
+    final text = isRetry ? retryText : _controller.text.trim();
     if (text.isEmpty) return;
 
-    _controller.clear();
-    HapticFeedback.lightImpact();
+    if (!isRetry) {
+      _controller.clear();
+      HapticFeedback.lightImpact();
+    }
 
     await _ensureHistoryLoaded();
 
-    _chatService.addUserMessage(text);
-    setState(() => _isTyping = true);
+    if (!isRetry) {
+      // On retry the failed message is already in history — don't duplicate.
+      _chatService.addUserMessage(text);
+    }
+    setState(() {
+      _isTyping = true;
+      _errorText = null;
+      _failedText = null;
+    });
     _scrollToBottom();
 
-    _chatService.sendMessage(text).then((reply) async {
+    try {
+      final reply = await _chatService.sendMessage(text);
       if (!mounted) return;
       setState(() => _isTyping = false);
 
@@ -114,48 +143,29 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       _scrollToBottom();
       await _persistHistory();
-    }).catchError((e) async {
+    } on ChatSendException catch (e) {
+      debugPrint('[Chatbot] Send failed: ${e.code} — ${e.message}');
       if (!mounted) return;
-      setState(() => _isTyping = false);
       await _persistHistory();
-
-      String errorMessage;
-      if (e is FirebaseFunctionsException) {
-        // Check if App Check is the likely cause of a not-found error.
-        bool appCheckOk = true;
-        try {
-          final token = await FirebaseAppCheck.instance.getToken(false);
-          appCheckOk = token != null && token.isNotEmpty;
-        } catch (_) {
-          appCheckOk = false;
-        }
-
-        switch (e.code) {
-          case 'not-found':
-            errorMessage = appCheckOk
-                ? 'Chat service is currently unavailable. Please try again later.'
-                : 'Unable to verify app security. Please update the app and try again.';
-            break;
-          case 'unauthenticated':
-            errorMessage = 'Please sign in to use the assistant.';
-            break;
-          case 'resource-exhausted':
-            errorMessage = 'Too many requests. Please wait a moment.';
-            break;
-          default:
-            errorMessage = 'Failed to get response. Please try again.';
-        }
-      } else {
-        errorMessage = 'Failed to get response. Please try again.';
-      }
-
+      setState(() {
+        _isTyping = false;
+        _errorText = e.message;
+        _failedText = text;
+        _errorRetryable = e.retryable;
+      });
+      _scrollToBottom();
+    } catch (e) {
       debugPrint('[Chatbot] Send error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
-      }
-    });
+      if (!mounted) return;
+      await _persistHistory();
+      setState(() {
+        _isTyping = false;
+        _errorText = 'Failed to get response. Please try again.';
+        _failedText = text;
+        _errorRetryable = true;
+      });
+      _scrollToBottom();
+    }
   }
 
   @override
@@ -180,11 +190,13 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               _buildHeader(),
               const Divider(height: 1),
-              Expanded(
-                child: _chatService.history.isEmpty
+          Expanded(
+            child: _chatService.history.isEmpty
+                ? (_errorText == null
                     ? _buildWelcome()
-                    : _buildMessages(),
-              ),
+                    : _buildErrorOnlyState())
+                : _buildMessages(),
+          ),
               if (_isTyping) _buildTypingIndicator(),
               _buildInput(),
             ],
@@ -238,7 +250,10 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             onPressed: () {
               _chatService.clearHistory();
-              setState(() {});
+              setState(() {
+                _errorText = null;
+                _failedText = null;
+              });
             },
             icon: const Icon(Icons.refresh_rounded, size: 20),
             color: AppColors.textTertiary,
@@ -275,9 +290,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Hi! I\'m KashTeP',
-              style: TextStyle(
+            Text(
+              'Hello, ${_firstName}',
+              style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: AppColors.textPrimary,
@@ -286,7 +301,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'I can help you navigate the app, explain features, and answer questions about how things work.',
+              "I'm KashTeP — I can help you navigate the app, explain features, and answer questions about how things work.",
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -317,6 +332,22 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// History is empty but the first send failed — show the error centered
+  /// instead of an empty screen.
+  Widget _buildErrorOnlyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: _InlineError(
+          message: _errorText!,
+          retryable: _errorRetryable,
+          onRetry: () => _send(retryText: _failedText),
+          centered: true,
         ),
       ),
     );
@@ -365,15 +396,24 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessages() {
     final messages = _chatService.history;
+    final showError = _errorText != null;
+    final itemCount = messages.length + (showError ? 1 : 0);
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: messages.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        final msg = messages[index];
-        return _MessageBubble(
-          text: msg.text,
-          isUser: msg.isUser,
+        if (index < messages.length) {
+          final msg = messages[index];
+          return _MessageBubble(
+            text: msg.text,
+            isUser: msg.isUser,
+          );
+        }
+        return _InlineError(
+          message: _errorText!,
+          retryable: _errorRetryable,
+          onRetry: () => _send(retryText: _failedText),
         );
       },
     );
