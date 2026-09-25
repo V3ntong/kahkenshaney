@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/firestore/support_chat_service.dart';
+import '../data/storage/chat_image_uploader.dart';
 import '../models/support_message.dart';
 import '../theme/app_theme.dart';
 
@@ -44,6 +44,11 @@ class _UserChatScreenState extends State<UserChatScreen> {
   bool _readMarked = false;
   String? _chatId;
   bool get _isPeerChat => widget.peerUid != null;
+
+  /// Image sends that failed during the actual upload. Rendered inline at
+  /// the end of the message list with a persistent Retry affordance, instead
+  /// of a snackbar that disappears before the user can react.
+  final List<_FailedImageUpload> _failedUploads = [];
 
   @override
   void initState() {
@@ -144,31 +149,63 @@ class _UserChatScreenState extends State<UserChatScreen> {
     });
   }
 
+  String _newFileName() {
+    final chatPrefix = _isPeerChat ? 'peer' : 'chat';
+    return '${chatPrefix}_${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+  }
+
   Future<void> _pickAndSendImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (picked == null || !mounted) return;
 
+    final file = File(picked.path);
     try {
-      final file = File(picked.path);
-      final chatPrefix = _isPeerChat ? 'peer' : 'chat';
-      final fileName = '${chatPrefix}_${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = FirebaseStorage.instance.ref('chat_images/$fileName');
-      await ref.putFile(
-        file,
-        SettableMetadata(
-          customMetadata: {'metadataUploaderId': widget.userId},
-        ),
+      final url = await ChatImageUploader.upload(
+        file: file,
+        uploaderUid: widget.userId,
+        fileName: _newFileName(),
       );
-      final url = await ref.getDownloadURL();
       if (!mounted) return;
       _sendMessage(imageUrl: url);
-    } catch (e) {
+    } on ChatImageUploadException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to upload image. Please try again.')),
-      );
+      if (e.preflight) {
+        // Avoidable failure (type/size) — tell the user exactly what's wrong
+        // and don't leave a retryable bubble behind.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+        return;
+      }
+      // Real upload failure — keep it on screen with a retry affordance.
+      setState(() => _failedUploads.add(_FailedImageUpload(file, e.message)));
     }
+  }
+
+  Future<void> _retryUpload(_FailedImageUpload entry) async {
+    if (entry.retrying) return;
+    setState(() => entry.retrying = true);
+
+    try {
+      final url = await ChatImageUploader.upload(
+        file: entry.file,
+        uploaderUid: widget.userId,
+        fileName: _newFileName(),
+      );
+      if (!mounted) return;
+      setState(() => _failedUploads.remove(entry));
+      _sendMessage(imageUrl: url);
+    } on ChatImageUploadException catch (e) {
+      if (!mounted) return;
+      setState(() => entry.message = e.message);
+    } finally {
+      if (mounted) setState(() => entry.retrying = false);
+    }
+  }
+
+  void _discardUpload(_FailedImageUpload entry) {
+    setState(() => _failedUploads.remove(entry));
   }
 
   @override
@@ -257,7 +294,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
 
                 final messages = snapshot.data ?? const <SupportMessage>[];
 
-                if (messages.isEmpty) {
+                if (messages.isEmpty && _failedUploads.isEmpty) {
                   return _buildEmptyState();
                 }
 
@@ -273,16 +310,26 @@ class _UserChatScreenState extends State<UserChatScreen> {
                   });
                 }
 
+                final total = messages.length + _failedUploads.length;
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  itemCount: messages.length,
+                  itemCount: total,
                   itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    final isMe = msg.senderId == widget.userId;
-                    return _MessageBubble(
-                      message: msg,
-                      isMe: isMe,
+                    if (index < messages.length) {
+                      final msg = messages[index];
+                      final isMe = msg.senderId == widget.userId;
+                      return _MessageBubble(
+                        message: msg,
+                        isMe: isMe,
+                      );
+                    }
+                    final failed =
+                        _failedUploads[index - messages.length];
+                    return _FailedUploadBubble(
+                      upload: failed,
+                      onRetry: () => _retryUpload(failed),
+                      onDiscard: () => _discardUpload(failed),
                     );
                   },
                 );
