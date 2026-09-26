@@ -38,6 +38,15 @@ service cloud.firestore {
       // Delete: owner or admin
       allow delete: if request.auth != null
         && (resource.data.ownerUid == request.auth.uid || isAdmin());
+
+      // A4 — non-exclusive claims: every claim on the item lives here.
+      // Written ONLY by Cloud Functions (claimItem / approveClaim — the
+      // Admin SDK bypasses rules); any signed-in user may read the list so
+      // the UI can show "N people have claimed this item".
+      match /claims/{claimId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
     }
 
     // ── resolvedFeed (public homepage "Recently Resolved" feed, A1) ──────

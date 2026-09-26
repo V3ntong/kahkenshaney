@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
 import '../data/firestore/notification_service.dart';
+import '../models/item_claim.dart';
 import '../models/lost_found_item.dart';
+import '../services/claim_api.dart';
 import '../theme/app_theme.dart';
 import '../widgets/action_progress_bar.dart';
 import '../widgets/status_tracker_widget.dart';
@@ -127,8 +129,65 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
           if (mounted) Navigator.of(context).pop();
         },
         onStatusChange: (status) => _updateItemStatus(item, status),
+        onApproveClaim: (claim) => _approveClaim(item, claim),
       ),
     );
+  }
+
+  /// A4: admin approves one submitted claim — the server rejects the other
+  /// open claims and resolves the item in favor of [claim].
+  Future<void> _approveClaim(LostFoundItem item, ItemClaim claim) async {
+    final claimer = (claim.claimerName != null &&
+            claim.claimerName!.trim().isNotEmpty)
+        ? claim.claimerName!
+        : 'this user';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Approve Claim'),
+        content: Text(
+          'Approve the claim by $claimer? All other claims on '
+          '"${item.title}" will be rejected and the item will be marked '
+          'resolved.',
+          style: const TextStyle(
+            fontSize: 13.5,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    _actionController.setInProgress();
+    try {
+      await ClaimApi().approveClaim(item.id, claim.id);
+      if (_localItems != null) {
+        setState(() {
+          _localItems = _localItems!..removeWhere((i) => i.id == item.id);
+        });
+      }
+      if (!mounted) return;
+      _actionController.setSuccess(message: 'Claim approved');
+      Navigator.of(context).pop();
+    } on ClaimApiException catch (e) {
+      if (!mounted) return;
+      _actionController.setError(e.message);
+    } catch (e) {
+      if (!mounted) return;
+      _actionController.setError('Failed: ${e.toString()}');
+    }
   }
 
   void _showRejectDialog(LostFoundItem item) {
@@ -481,12 +540,14 @@ class _ItemDetailSheet extends StatelessWidget {
     required this.adminUid,
     required this.onModerate,
     required this.onStatusChange,
+    required this.onApproveClaim,
   });
 
   final LostFoundItem item;
   final String adminUid;
   final void Function(ModerationStatus status, {String? reason}) onModerate;
   final ValueChanged<ItemStatus> onStatusChange;
+  final void Function(ItemClaim claim) onApproveClaim;
 
   @override
   Widget build(BuildContext context) {
@@ -577,6 +638,14 @@ class _ItemDetailSheet extends StatelessWidget {
                 statusHistory: item.statusHistory,
               ),
 
+              // A4: competing claims — approve one, the rest are rejected
+              // server-side and the item resolves.
+              const SizedBox(height: 20),
+              _ClaimsSection(
+                itemId: item.id,
+                onApproveClaim: onApproveClaim,
+              ),
+
               // Lifecycle status actions
               const SizedBox(height: 20),
               const Text('Update Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
@@ -645,6 +714,215 @@ class _ItemDetailSheet extends StatelessWidget {
       },
     );
   }
+}
+
+// ── Claims section (A4 — non-exclusive claims) ────────────────────────────
+
+/// Live list of every claim submitted on the item, each with an Approve
+/// action. Approving one claim rejects the others server-side and resolves
+/// the item.
+class _ClaimsSection extends StatelessWidget {
+  const _ClaimsSection({
+    required this.itemId,
+    required this.onApproveClaim,
+  });
+
+  final String itemId;
+  final void Function(ItemClaim claim) onApproveClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    final Stream<List<ItemClaim>> stream;
+    try {
+      stream = ItemRepository().streamItemClaims(itemId);
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<List<ItemClaim>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final claims = snapshot.data;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              claims == null ? 'Claims' : 'Claims (${claims.length})',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (claims == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              )
+            else if (claims.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'No claims submitted yet.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              )
+            else
+              for (final claim in claims)
+                _ClaimRow(
+                  claim: claim,
+                  onApprove: () => onApproveClaim(claim),
+                ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ClaimRow extends StatelessWidget {
+  const _ClaimRow({required this.claim, required this.onApprove});
+
+  final ItemClaim claim;
+  final VoidCallback onApprove;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = claim.status;
+    final color = switch (status) {
+      ClaimStatus.submitted => AppColors.primary,
+      ClaimStatus.approved => AppColors.success,
+      ClaimStatus.rejected => AppColors.error,
+    };
+    final name = (claim.claimerName != null &&
+            claim.claimerName!.trim().isNotEmpty)
+        ? claim.claimerName!
+        : 'A user';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_rounded, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (claim.createdAt != null)
+                Text(
+                  _shortClaimDate(claim.createdAt!),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+            ],
+          ),
+          if (claim.location != null && claim.location!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(
+                  Icons.place_rounded,
+                  size: 13,
+                  color: AppColors.textTertiary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    claim.location!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (claim.note != null && claim.note!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              claim.note!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          if (status == ClaimStatus.submitted)
+            _StatusButton(
+              label: 'Approve Claim',
+              color: AppColors.success,
+              onTap: onApprove,
+            )
+          else
+            Row(
+              children: [
+                Icon(
+                  status == ClaimStatus.approved
+                      ? Icons.check_circle_rounded
+                      : Icons.cancel_rounded,
+                  size: 14,
+                  color: color,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  status.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _shortClaimDate(DateTime date) {
+  final local = date.toLocal();
+  return '${_monthAbbr[local.month - 1]} ${local.day}, ${local.year}';
 }
 
 class _StatusButton extends StatelessWidget {

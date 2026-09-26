@@ -18,7 +18,7 @@ import {
   validateResolve,
 } from './claims';
 import { sendAdminInviteEmail, sendOtpEmail } from './email';
-import { publishResolvedFeedEntry } from './resolved_feed';
+import { fetchDisplayName, publishResolvedFeedEntry } from './resolved_feed';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {
   isValidEmail,
@@ -805,13 +805,16 @@ export const itemLifecycle = onDocumentUpdated(
   }
 );
 
-// ── Claim Item (server-side, self-claim protected) ───────────────────────
+// ── Claim Item (server-side, non-exclusive claims) ────────────────────────
 
 /**
  * Callable: a signed-in user claims an item. Validates server-side that the
- * claimer did not report the item themselves, that the item is open, and that
- * it has not already been claimed. On success the item moves to
- * `pendingClaim` and both parties are notified.
+ * claimer did not report the item themselves and that the item is still open
+ * (non-terminal). Competing claims are allowed (A4): every claim is stored in
+ * the `items/{itemId}/claims` subcollection, the first claim moves the item
+ * to `pendingClaim`, and later claims only add to the claim count — no
+ * early claimant can lock out legitimate owners. On success both parties are
+ * notified.
  */
 export const claimItem = onCall(async (request) => {
   const claimerUid = request.auth?.uid;
@@ -834,7 +837,10 @@ export const claimItem = onCall(async (request) => {
   const validation = validateClaim({
     reportedBy: data.reportedBy ?? data.ownerUid ?? null,
     status: data.status ?? 'open',
-    claimedBy: data.claimedBy ?? null,
+    // A4: the single-claim lock is intentionally not enforced here —
+    // competing claims are welcome. Duplicate claims by the SAME user are
+    // rejected below via the claims subcollection check instead.
+    claimedBy: null,
     claimerUid,
   });
 
@@ -842,21 +848,76 @@ export const claimItem = onCall(async (request) => {
     throw new HttpsError(validation.code as never, validation.message);
   }
 
-  const history = Array.isArray(data.statusHistory) ? data.statusHistory : [];
-  const updatedHistory = [
-    ...history,
-    {
-      status: PENDING_CLAIM_STATUS,
-      changedAt: admin.firestore.Timestamp.now(),
-      changedBy: claimerUid,
-    },
-  ];
+  const note =
+    typeof request.data?.note === 'string'
+      ? request.data.note.trim().slice(0, 500)
+      : null;
+  const location =
+    typeof request.data?.location === 'string'
+      ? request.data.location.trim().slice(0, 300)
+      : null;
 
-  await itemDoc.ref.update({
-    status: PENDING_CLAIM_STATUS,
-    claimedBy: claimerUid,
-    statusHistory: updatedHistory,
-    updatedAt: admin.firestore.Timestamp.now(),
+  const itemRef = itemDoc.ref;
+  const claimsRef = itemRef.collection('claims');
+  const now = admin.firestore.Timestamp.now();
+
+  // One claim per user per item — this replaces the old item-level lock.
+  const existing = await claimsRef
+    .where('claimerUid', '==', claimerUid)
+    .limit(1)
+    .get();
+  if (!existing.empty) {
+    throw new HttpsError('already-exists', 'You have already claimed this item.');
+  }
+
+  const newClaimRef = claimsRef.doc();
+  // Snapshot of the claimer's display name so the admin review sheet can
+  // identify claimants (display name only — claims are never written with
+  // email/phone).
+  const claimerName = await fetchDisplayName(claimerUid);
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(itemRef);
+    if (!fresh.exists) {
+      throw new HttpsError('not-found', 'This item no longer exists.');
+    }
+    const d = fresh.data()!;
+    const status = d.status ?? 'open';
+    if (['claimed', 'resolved', 'closed'].includes(status)) {
+      throw new HttpsError('failed-precondition', 'This item is no longer open for claims.');
+    }
+
+    tx.set(newClaimRef, {
+      claimerUid,
+      claimerName,
+      status: 'submitted',
+      note,
+      location,
+      createdAt: now,
+    });
+
+    const isFirstClaim = !d.claimedBy;
+    const update: Record<string, unknown> = {
+      claimCount: (typeof d.claimCount === 'number' ? d.claimCount : 0) + 1,
+      updatedAt: now,
+    };
+
+    // Only the FIRST claim changes item status/claimant; competing claims
+    // must not lock the item (A4 — fairness fix).
+    if (isFirstClaim) {
+      const history = Array.isArray(d.statusHistory) ? d.statusHistory : [];
+      update.status = PENDING_CLAIM_STATUS;
+      update.claimedBy = claimerUid;
+      update.statusHistory = [
+        ...history,
+        {
+          status: PENDING_CLAIM_STATUS,
+          changedAt: now,
+          changedBy: claimerUid,
+        },
+      ];
+    }
+
+    tx.update(itemRef, update);
   });
 
   const reporter = data.reportedBy || data.ownerUid;
@@ -883,6 +944,116 @@ export const claimItem = onCall(async (request) => {
   );
 
   return { ok: true, status: PENDING_CLAIM_STATUS };
+});
+
+// ── Approve Claim (admin, multi-claim review) ─────────────────────────────
+
+/**
+ * Callable: an administrator approves ONE submitted claim on an item.
+ * Every other open claim on the same item is rejected automatically and the
+ * item moves to `resolved` with the approved claimer recorded — this is the
+ * A4 replacement for the old single-claim lock (all claims are reviewed, so
+ * no early claimant blocks a legitimate owner).
+ *
+ * Notifications and the public Resolved-feed entry are emitted by the
+ * `itemLifecycle` trigger off the item status change.
+ */
+export const approveClaim = onCall(async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in to approve a claim.');
+  }
+
+  const itemId =
+    typeof request.data?.itemId === 'string' ? request.data.itemId.trim() : '';
+  const claimId =
+    typeof request.data?.claimId === 'string' ? request.data.claimId.trim() : '';
+  if (!itemId || !claimId) {
+    throw new HttpsError('invalid-argument', 'Missing item ID or claim ID.');
+  }
+
+  const userDoc = await db.collection('users').doc(callerUid).get();
+  if (userDoc.data()?.isAdmin !== true) {
+    throw new HttpsError('permission-denied', 'Only administrators can approve claims.');
+  }
+
+  const itemRef = db.collection('items').doc(itemId);
+  const claimRef = itemRef.collection('claims').doc(claimId);
+  const now = admin.firestore.Timestamp.now();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [itemSnap, claimSnap] = await Promise.all([
+      tx.get(itemRef),
+      tx.get(claimRef),
+    ]);
+    if (!itemSnap.exists) {
+      throw new HttpsError('not-found', 'This item no longer exists.');
+    }
+    if (!claimSnap.exists) {
+      throw new HttpsError('not-found', 'This claim no longer exists.');
+    }
+    const item = itemSnap.data()!;
+    const claim = claimSnap.data()!;
+    const status = item.status ?? 'open';
+    if (['claimed', 'resolved', 'closed'].includes(status)) {
+      throw new HttpsError('failed-precondition', 'This item is already resolved.');
+    }
+    if (claim.status === 'approved') {
+      throw new HttpsError('failed-precondition', 'This claim has already been approved.');
+    }
+
+    tx.update(claimRef, {
+      status: 'approved',
+      decidedAt: now,
+      decidedBy: callerUid,
+    });
+
+    // Approving one claim rejects every other open claim automatically.
+    const openClaims = await tx.get(
+      itemRef.collection('claims').where('status', '==', 'submitted')
+    );
+    for (const doc of openClaims.docs) {
+      if (doc.id === claimId) continue;
+      tx.update(doc.ref, {
+        status: 'rejected',
+        decidedAt: now,
+        decidedBy: callerUid,
+        rejectionReason: 'another-claim-approved',
+      });
+    }
+
+    const history = Array.isArray(item.statusHistory) ? item.statusHistory : [];
+    tx.update(itemRef, {
+      status: RESOLVED_STATUS,
+      claimedBy: claim.claimerUid ?? null,
+      resolvedAt: now,
+      resolvedBy: callerUid,
+      statusHistory: [
+        ...history,
+        { status: RESOLVED_STATUS, changedAt: now, changedBy: callerUid },
+      ],
+      updatedAt: now,
+    });
+
+    return {
+      claimerUid: String(claim.claimerUid ?? ''),
+      title: String(item.title ?? 'an item'),
+    };
+  });
+
+  // Notify the approved claimer (the `itemLifecycle` trigger also notifies
+  // the reporter when the item resolves).
+  if (result.claimerUid) {
+    await notifyUser(
+      result.claimerUid,
+      'Claim Approved',
+      `Your claim for "${result.title}" has been approved. The item is now resolved — arrange the handoff with the reporter.`,
+      'claim_approved',
+      itemId
+    );
+  }
+
+  return { ok: true, status: RESOLVED_STATUS };
 });
 
 // ── Resolve Item (server-side lifecycle) ─────────────────────────────────

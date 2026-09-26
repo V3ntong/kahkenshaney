@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../data/firestore/item_repository.dart';
+import '../models/item_claim.dart';
 import '../models/lost_found_item.dart';
 import '../services/auth_service.dart' show FirebaseAuthService;
 import '../data/firestore/notification_service.dart';
@@ -41,7 +42,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   bool _isClaiming = false;
   bool _isConfirmingMatch = false;
   StreamSubscription<LostFoundItem?>? _itemSub;
+  StreamSubscription<ItemClaim?>? _claimSub;
   LostFoundItem? _liveItem;
+
+  /// The current user's claim on this item (A4), or null when they have
+  /// not claimed it.
+  ItemClaim? _myClaim;
 
   /// The item as currently known. Subscribes to the Firestore document so
   /// status changes, claims and match scores update live.
@@ -54,11 +60,28 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       if (!mounted || live == null) return;
       setState(() => _liveItem = live);
     }, onError: (_) {});
+
+    // A4: track whether the viewer already submitted a claim so the button
+    // switches to a "You claimed this item" state instead of locking others.
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null && uid.isNotEmpty) {
+        _claimSub = ItemRepository()
+            .streamUserClaim(widget.item.id, uid)
+            .listen((claim) {
+          if (!mounted) return;
+          setState(() => _myClaim = claim);
+        }, onError: (_) {});
+      }
+    } catch (_) {
+      // Firebase not ready — claim state simply stays unknown.
+    }
   }
 
   @override
   void dispose() {
     _itemSub?.cancel();
+    _claimSub?.cancel();
     super.dispose();
   }
 
@@ -89,9 +112,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     // (2) the item status is NOT terminal (claimed/resolved/closed).
     final canResolve = !item.status.isTerminal && isAdmin;
     // Claimability rule: a non-admin, non-owner, non-reporter user may claim
-    // an item whose status is non-terminal and which has no pending/accepted
-    // claim yet.  The server-side `claimItem` Cloud Function mirrors this.
-    final canClaim = item.canBeClaimedBy(currentUid ?? '', isAdmin: isAdmin);
+    // an item whose status is non-terminal. Claims are non-exclusive (A4) —
+    // other users' claims do not block this one — but the viewer must not
+    // have claimed it already. The server-side `claimItem` Cloud Function
+    // mirrors this.
+    final myClaim = _myClaim;
+    final canClaim =
+        item.canBeClaimedBy(currentUid ?? '', isAdmin: isAdmin) &&
+            myClaim == null;
+    final claimCount = item.claimCount;
 
     debugPrint(
       '[ItemDetail] uid=$currentUid  owner=${item.ownerUid}  '
@@ -328,6 +357,49 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     },
                   ),
 
+                  // A4: show how many people have claimed this item — the
+                  // count reflects the `claims` subcollection, and competing
+                  // claims do not lock the item.
+                  if (claimCount > 0 || myClaim != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.groups_rounded,
+                            size: 18,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              claimCount <= 1
+                                  ? '1 person has claimed this item'
+                                  : '$claimCount people have claimed this item',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // Claim This Item button (non-owners)
                   if (canClaim) ...[
                     const SizedBox(height: 28),
@@ -362,6 +434,51 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
+                      ),
+                    ),
+                  ],
+
+                  // The viewer already claimed — show the claim's state
+                  // instead of the button (A4).
+                  if (!canClaim && myClaim != null && !isOwner) ...[
+                    const SizedBox(height: 28),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.successSurface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: AppColors.success.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            myClaim.status == ClaimStatus.approved
+                                ? Icons.verified_rounded
+                                : Icons.how_to_reg_rounded,
+                            size: 18,
+                            color: AppColors.success,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              myClaim.status == ClaimStatus.submitted
+                                  ? 'You claimed this item — pending review'
+                                  : 'You claimed this item — ${myClaim.status.label}',
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

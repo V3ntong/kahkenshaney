@@ -71,7 +71,7 @@ export async function publishResolvedFeedEntry(
 }
 
 /** Display name for a user doc — never email/phone. Returns null if absent. */
-async function fetchDisplayName(uid: string): Promise<string | null> {
+export async function fetchDisplayName(uid: string): Promise<string | null> {
   try {
     const snap = await admin.firestore().collection('users').doc(uid).get();
     const name = snap.data()?.displayName;

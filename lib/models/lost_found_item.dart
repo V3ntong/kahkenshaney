@@ -191,6 +191,7 @@ class LostFoundItem {
     this.storagePath,
     this.matchedItemId,
     this.claimedBy,
+    this.claimCount = 0,
     this.resolvedByAdminId,
     this.resolvedAt,
     this.pickupDateTime,
@@ -226,6 +227,10 @@ class LostFoundItem {
   /// The UID of the user who submitted a claim (status `pendingClaim`).
   final String? claimedBy;
 
+  /// Number of claims submitted on this item (A4 — claims are stored in the
+  /// `items/{itemId}/claims` subcollection; this is the denormalized count).
+  final int claimCount;
+
   /// The UID of the admin who approved/resolved the claim.
   final String? resolvedByAdminId;
 
@@ -255,8 +260,12 @@ class LostFoundItem {
   ///   2. Caller must NOT be the item owner (`ownerUid`) or the original
   ///      reporter (`reportedBy`).
   ///   3. Item status must be non-terminal (not `claimed`, `resolved`, or
-  ///      `closed`) and not already `pendingClaim`.
-  ///   4. No existing claim (`claimedBy` must be null or empty).
+  ///      `closed`).
+  ///
+  /// Claims are NOT exclusive (A4): other users may keep claiming while the
+  /// item is open — competing claims are reviewed by an admin, who approves
+  /// one and rejects the rest. Whether [uid] already claimed is checked
+  /// separately against the `claims` subcollection.
   ///
   /// This is a UI convenience — the server is the source of truth.
   bool canBeClaimedBy(String uid, {bool isAdmin = false}) {
@@ -264,9 +273,7 @@ class LostFoundItem {
     if (uid == ownerUid || (reportedBy.isNotEmpty && uid == reportedBy)) {
       return false;
     }
-    if (status.isTerminal || status == ItemStatus.pendingClaim) return false;
-    if (claimedBy != null && claimedBy!.isNotEmpty) return false;
-    return true;
+    return !status.isTerminal;
   }
 
   String? get displayUrl => imageUrl ?? (media.isNotEmpty ? media.first : null);
@@ -286,6 +293,7 @@ class LostFoundItem {
     String? storagePath,
     String? matchedItemId,
     String? claimedBy,
+    int? claimCount,
     String? resolvedByAdminId,
     DateTime? resolvedAt,
     DateTime? pickupDateTime,
@@ -311,6 +319,7 @@ class LostFoundItem {
       storagePath: storagePath ?? this.storagePath,
       matchedItemId: matchedItemId ?? this.matchedItemId,
       claimedBy: claimedBy ?? this.claimedBy,
+      claimCount: claimCount ?? this.claimCount,
       resolvedByAdminId: resolvedByAdminId ?? this.resolvedByAdminId,
       resolvedAt: resolvedAt ?? this.resolvedAt,
       pickupDateTime: pickupDateTime ?? this.pickupDateTime,
@@ -346,6 +355,7 @@ class LostFoundItem {
       storagePath: map['storagePath'] as String?,
       matchedItemId: map['matchedItemId'] as String?,
       claimedBy: map['claimedBy'] as String?,
+      claimCount: ((map['claimCount'] as num?) ?? 0).toInt(),
       resolvedByAdminId: map['resolvedByAdminId'] as String?,
       resolvedAt: _toDate(map['resolvedAt']),
       pickupDateTime: _toDate(map['pickupDateTime']),
@@ -377,6 +387,7 @@ class LostFoundItem {
       'storagePath': storagePath,
       'matchedItemId': matchedItemId,
       'claimedBy': claimedBy,
+      'claimCount': claimCount,
       'resolvedByAdminId': resolvedByAdminId,
       'resolvedAt': resolvedAt,
       'pickupDateTime': pickupDateTime,

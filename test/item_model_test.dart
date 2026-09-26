@@ -173,12 +173,12 @@ void main() {
       }
     });
 
-    test('an already-claimed item rejects new claims', () {
+    test('competing claims do not block other claimants (A4)', () {
       final item = _baseItem(
         status: ItemStatus.pendingClaim,
         claimedBy: 'user-claimer-1',
       );
-      expect(item.canBeClaimedBy('user-claimer-2'), isFalse);
+      expect(item.canBeClaimedBy('user-claimer-2'), isTrue);
     });
 
     test('admins and signed-out users cannot claim', () {
@@ -186,9 +186,9 @@ void main() {
       expect(_baseItem().canBeClaimedBy('user-claimer', isAdmin: true), isFalse);
     });
 
-    test('pendingClaim status blocks claims even when claimedBy is null', () {
+    test('pendingClaim status does not lock out other claimants (A4)', () {
       final item = _baseItem(status: ItemStatus.pendingClaim, claimedBy: null);
-      expect(item.canBeClaimedBy('user-claimer'), isFalse);
+      expect(item.canBeClaimedBy('user-claimer'), isTrue);
     });
 
     test('non-terminal statuses allow claims for other users', () {

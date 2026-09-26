@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/item_claim.dart';
 import '../../models/lost_found_item.dart';
 import '../../models/resolved_feed_entry.dart';
 
@@ -242,5 +243,43 @@ class ItemRepository {
   /// Delete an item.
   Future<void> deleteItem(String id) async {
     await _items.doc(id).delete();
+  }
+
+  // ── Claims (A4 — non-exclusive, `items/{itemId}/claims` subcollection) ──
+
+  CollectionReference<Map<String, dynamic>> _claims(String itemId) =>
+      _items.doc(itemId).collection('claims');
+
+  /// All claims submitted on an item, newest first. Read-only for clients —
+  /// claims are written exclusively by Cloud Functions.
+  Stream<List<ItemClaim>> streamItemClaims(String itemId) {
+    return _claims(itemId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map(
+      (snap) => snap.docs
+          .map((doc) => ItemClaim.fromMap(doc.id, itemId, doc.data()))
+          .toList(),
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamItemClaims error: $error');
+      return <ItemClaim>[];
+    });
+  }
+
+  /// The current user's claim on an item, or null when they have not
+  /// claimed it. Used to show "You claimed this item" in the detail screen.
+  Stream<ItemClaim?> streamUserClaim(String itemId, String uid) {
+    return _claims(itemId)
+        .where('claimerUid', isEqualTo: uid)
+        .limit(1)
+        .snapshots()
+        .map(
+      (snap) => snap.docs.isEmpty
+          ? null
+          : ItemClaim.fromMap(snap.docs.first.id, itemId, snap.docs.first.data()),
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamUserClaim error: $error');
+      return null;
+    });
   }
 }

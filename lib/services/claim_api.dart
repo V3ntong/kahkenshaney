@@ -13,11 +13,11 @@ class ClaimApiException implements Exception {
   String toString() => message;
 }
 
-/// Client for the `claimItem` Cloud Function.
+/// Client for the `claimItem` / `approveClaim` Cloud Functions.
 ///
 /// The server performs the authoritative validation (a user cannot claim an
-/// item they reported themselves, terminal/already-claimed items are
-/// rejected); this client only surfaces the result.
+/// item they reported themselves, terminal items are rejected, one claim per
+/// user); this client only surfaces the result.
 class ClaimApi {
   ClaimApi({FirebaseFunctions? functions}) : _functionsOverride = functions;
 
@@ -37,6 +37,10 @@ class ClaimApi {
 
   /// Submits a claim for [itemId]. Throws [ClaimApiException] with the
   /// server's message when the claim is rejected.
+  ///
+  /// Claims are non-exclusive (A4): other users can keep claiming the same
+  /// item while it is open; the server stores each claim in the
+  /// `items/{itemId}/claims` subcollection.
   Future<void> claimItem(String itemId) async {
     try {
       final callable = _functions().httpsCallable('claimItem');
@@ -57,13 +61,39 @@ class ClaimApi {
     }
   }
 
+  /// Admin: approves [claimId] on [itemId]. The server rejects every other
+  /// open claim on the same item and moves the item to `resolved`.
+  /// Throws [ClaimApiException] with the server's message on failure.
+  Future<void> approveClaim(String itemId, String claimId) async {
+    try {
+      final callable = _functions().httpsCallable('approveClaim');
+      await callable.call<Map<String, dynamic>>({
+        'itemId': itemId,
+        'claimId': claimId,
+      });
+    } on ClaimApiException {
+      rethrow;
+    } on FirebaseFunctionsException catch (e) {
+      final message = e.message?.trim();
+      if (message != null && message.isNotEmpty) {
+        throw ClaimApiException(message);
+      }
+      throw ClaimApiException(_fallback(e.code));
+    } catch (e) {
+      debugPrint('[ClaimApi] approveClaim unexpected error: $e');
+      throw const ClaimApiException(
+        'Could not reach the server. Check your connection and try again.',
+      );
+    }
+  }
+
   String _fallback(String code) {
     final normalized = code.replaceFirst('functions/', '');
     switch (normalized) {
       case 'permission-denied':
         return 'You cannot claim an item you reported yourself.';
       case 'already-exists':
-        return 'This item has already been claimed.';
+        return 'You have already claimed this item.';
       case 'failed-precondition':
         return 'This item is no longer open for claims.';
       case 'not-found':
