@@ -38,14 +38,48 @@ class ProfileProvider extends ChangeNotifier {
   int get foundCount => _foundCount;
   int get lostCount => _lostCount;
 
+  StreamSubscription? _authSub;
   StreamSubscription? _userSub;
   StreamSubscription? _postsSub;
   StreamSubscription? _itemsSub;
+  String? _activeUid;
 
   /// Starts listening to the current user's profile, posts, and items in Firestore.
+  ///
+  /// Safe to call more than once — the underlying listeners are attached once
+  /// and re-attached automatically whenever the signed-in user changes, so a
+  /// single live `users/{uid}` stream stays the app-wide source of truth for
+  /// name/photo without needing per-screen refresh calls.
   void startListening() {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+    _authSub ??= _auth.authStateChanges().listen(
+      (user) => _attach(user?.uid),
+      onError: (_) {},
+    );
+    _attach(_auth.currentUser?.uid);
+  }
+
+  /// (Re)attaches the Firestore listeners for [uid], or clears local state
+  /// when the user signs out.
+  void _attach(String? uid) {
+    if (uid == _activeUid && (uid == null || _userSub != null)) return;
+
+    _userSub?.cancel();
+    _postsSub?.cancel();
+    _itemsSub?.cancel();
+    _userSub = null;
+    _postsSub = null;
+    _itemsSub = null;
+    _activeUid = uid;
+
+    if (uid == null) {
+      _user = null;
+      _posts = [];
+      _reportsCount = 0;
+      _foundCount = 0;
+      _lostCount = 0;
+      notifyListeners();
+      return;
+    }
 
     // Listen to user profile
     _userSub = _db.collection('users').doc(uid).snapshots().listen((snap) {
@@ -81,9 +115,15 @@ class ProfileProvider extends ChangeNotifier {
 
   /// Stops Firestore listeners to prevent memory leaks.
   void stopListening() {
+    _authSub?.cancel();
+    _authSub = null;
     _userSub?.cancel();
     _postsSub?.cancel();
     _itemsSub?.cancel();
+    _userSub = null;
+    _postsSub = null;
+    _itemsSub = null;
+    _activeUid = null;
   }
 
   /// Uploads a new post image and saves it to Firestore.
@@ -182,5 +222,16 @@ class ProfileProvider extends ChangeNotifier {
     if (displayName != null) {
       await _auth.currentUser?.updateDisplayName(displayName);
     }
+
+    // Reflect the edit locally right away so every screen bound to this
+    // provider updates without waiting for the Firestore snapshot round-trip.
+    final current = _user;
+    if (current != null) {
+      _user = current.copyWith(
+        displayName: displayName ?? current.displayName,
+        bio: bio ?? current.bio,
+      );
+    }
+    notifyListeners();
   }
 }

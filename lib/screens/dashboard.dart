@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../data/firestore/notification_service.dart' as firestore_notif;
 import '../pages/home_page.dart';
+import '../providers/profile_provider.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
@@ -50,6 +52,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       _listenUnread();
       _listenNotificationCount();
       _initNotifications();
+      // Single source of truth: keep the profile provider (live users/{uid}
+      // stream) running for the whole session so name/photo edits made in
+      // Edit Profile propagate to every screen without an app restart.
+      if (_ready) context.read<ProfileProvider>().startListening();
     });
   }
 
@@ -153,32 +159,43 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     final user = _auth.currentUser!;
-    final displayName = user.displayName?.trim().isNotEmpty == true
-        ? user.displayName!.trim()
-        : 'there';
-    final email = user.email ?? '';
-    final photoUrl = user.photoURL;
 
-    return NotificationBannerHost(
-      userId: _auth.currentUser?.uid,
-      child: Stack(
-        children: [
-          HomePage(
-            userName: displayName,
-            userEmail: email,
-            photoUrl: photoUrl,
-            ownerUid: _auth.currentUser?.uid,
-            onChangePassword: _goToChangePassword,
-            onSignOut: _signOut,
-            onTabChanged: (index) => setState(() => _currentTab = index),
-            unreadCount: _unreadCount,
-            notificationCount: _notificationCount,
-            overlayDismissed: _overlayDismissed,
+    // The Firestore profile document is the source of truth for name/photo;
+    // Firebase Auth is only the fallback before the first snapshot arrives.
+    return Consumer<ProfileProvider>(
+      builder: (context, profile, _) {
+        final profileUser = profile.user;
+        final profileName = profileUser?.displayName.trim();
+        final displayName = (profileName != null && profileName.isNotEmpty)
+            ? profileName
+            : (user.displayName?.trim().isNotEmpty == true
+                ? user.displayName!.trim()
+                : 'there');
+        final email = profileUser?.email ?? user.email ?? '';
+        final photoUrl = profileUser?.photoUrl ?? user.photoURL;
+
+        return NotificationBannerHost(
+          userId: _auth.currentUser?.uid,
+          child: Stack(
+            children: [
+              HomePage(
+                userName: displayName,
+                userEmail: email,
+                photoUrl: photoUrl,
+                ownerUid: _auth.currentUser?.uid,
+                onChangePassword: _goToChangePassword,
+                onSignOut: _signOut,
+                onTabChanged: (index) => setState(() => _currentTab = index),
+                unreadCount: _unreadCount,
+                notificationCount: _notificationCount,
+                overlayDismissed: _overlayDismissed,
+              ),
+              if (_currentTab != 4) const ChatbotButton(),
+              if (_welcomeVisible) _buildWelcomeOverlay(displayName),
+            ],
           ),
-          if (_currentTab != 4) const ChatbotButton(),
-          if (_welcomeVisible) _buildWelcomeOverlay(displayName),
-        ],
-      ),
+        );
+      },
     );
   }
 
