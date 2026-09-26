@@ -624,9 +624,13 @@ class _RecentlyReportedSection extends StatelessWidget {
             final all = [...lostItems, ...foundItems]
               ..sort((a, b) => (b.createdAt ?? DateTime(0))
                   .compareTo(a.createdAt ?? DateTime(0)));
-            final recent = all.take(4).toList();
 
-            if (recent.isEmpty) return const SizedBox.shrink();
+            if (all.isEmpty) return const SizedBox.shrink();
+
+            final groups = _groupByDateBucket(all)
+                .entries
+                .where((entry) => entry.value.isNotEmpty)
+                .toList();
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,38 +640,113 @@ class _RecentlyReportedSection extends StatelessWidget {
                   onViewAll: onViewAll,
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 200,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: recent.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 12),
-                    itemBuilder: (context, index) {
-                      return FadeSlideInWidget(
-                        delay: FadeSlideInWidget.staggerDelay(
-                          index,
-                          perItemMs: 50,
-                          maxSpreadMs: 400,
-                        ),
-                        duration: const Duration(milliseconds: 350),
-                        offset: 20,
-                        child: SizedBox(
-                          width: 150,
-                        child: ItemGridCard(
-                          item: recent[index],
-                          heroTagPrefix: 'recent',
-                          onTap: () => onItemTap(recent[index]),
+                for (var g = 0; g < groups.length; g++) ...[
+                  _DateGroupHeader(label: groups[g].key),
+                  SizedBox(
+                    height: 200,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: groups[g].value.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) {
+                        final item = groups[g].value[index];
+                        return FadeSlideInWidget(
+                          delay: FadeSlideInWidget.staggerDelay(
+                            index,
+                            perItemMs: 50,
+                            maxSpreadMs: 400,
                           ),
-                        ),
-                      );
-                    },
+                          duration: const Duration(milliseconds: 350),
+                          offset: 20,
+                          child: SizedBox(
+                            width: 150,
+                            child: ItemGridCard(
+                              item: item,
+                              heroTagPrefix: 'recent',
+                              onTap: () => onItemTap(item),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                ),
+                  if (g != groups.length - 1) const SizedBox(height: 16),
+                ],
               ],
             );
           },
         );
       },
+    );
+  }
+}
+
+/// Date-bucket labels in display order. Items are grouped by `createdAt`
+/// relative to now, in the user's local timezone.
+const List<String> _dateBucketLabels = [
+  'Today',
+  'Yesterday',
+  'This Week',
+  'This Month',
+  'Earlier',
+];
+
+/// Buckets [items] (already sorted newest-first) into the labels above while
+/// preserving the order inside each bucket.
+Map<String, List<LostFoundItem>> _groupByDateBucket(
+  List<LostFoundItem> items,
+) {
+  final now = DateTime.now();
+  final groups = {
+    for (final label in _dateBucketLabels) label: <LostFoundItem>[],
+  };
+  for (final item in items) {
+    groups[_dateBucketLabel(item.createdAt, now)]!.add(item);
+  }
+  return groups;
+}
+
+String _dateBucketLabel(DateTime? createdAt, DateTime now) {
+  if (createdAt == null) return 'Earlier';
+
+  final local = createdAt.toLocal();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(local.year, local.month, local.day);
+
+  if (day == today) return 'Today';
+  if (day == DateTime(today.year, today.month, today.day - 1)) {
+    return 'Yesterday';
+  }
+  if (day.isAfter(today.subtract(const Duration(days: 7)))) return 'This Week';
+  if (day.year == now.year && day.month == now.month) return 'This Month';
+  return 'Earlier';
+}
+
+// ─── Date Group Header ────────────────────────────────────────────────────
+
+class _DateGroupHeader extends StatelessWidget {
+  const _DateGroupHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textSecondary,
+        ),
+      ),
     );
   }
 }
