@@ -20,7 +20,10 @@ service cloud.firestore {
             || isAdmin());
 
       // Create: authenticated user can create their own items; the reporter
-      // UID is recorded in reportedBy at creation time (auto-set pending)
+      // UID is recorded in reportedBy at creation time (auto-set pending).
+      // This also covers ADMIN-AUTHORED items (B2): when the admin files a
+      // report from the Admin Actions card, both ownerUid and reportedBy
+      // are the admin's own uid, so the same rule applies unchanged.
       allow create: if request.auth != null
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.reportedBy == request.auth.uid;
@@ -51,10 +54,11 @@ service cloud.firestore {
 
     // ── resolvedFeed (public homepage "Recently Resolved" feed, A1) ──────
     // Entries contain display names and item photos only (no email/phone/
-    // user IDs) and are written exclusively by Cloud Functions when a claim
-    // is approved. All signed-in users may read the feed; no client writes.
+    // user IDs — see ResolvedFeedEntry), and are written exclusively by
+    // Cloud Functions when a claim is approved. Reads are PUBLIC (acceptance
+    // checklist: "public resolvedFeed reads"); no client writes ever.
     match /resolvedFeed/{entryId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow write: if false;
     }
 
