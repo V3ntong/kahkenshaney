@@ -16,6 +16,10 @@ const _monthAbbr = [
 
 /// Admin screen — shows all non-terminal approved items.
 /// Admins can mark items as Resolved directly from here.
+///
+/// B7: the header segmented control distinguishes **Resolved Found** vs
+/// **Resolved Lost** so admins can tell at a glance which lifecycle a
+/// resolution belongs to (plus an "All" default).
 class AdminResolvedScreen extends StatefulWidget {
   const AdminResolvedScreen({
     super.key,
@@ -30,10 +34,14 @@ class AdminResolvedScreen extends StatefulWidget {
   State<AdminResolvedScreen> createState() => _AdminResolvedScreenState();
 }
 
+/// B7: which kind of lifecycle the Resolved section is showing.
+enum _ResolvedFilter { all, found, lost }
+
 class _AdminResolvedScreenState extends State<AdminResolvedScreen> {
   late final ItemRepository _repo;
   late final NotificationService _notifService;
   List<LostFoundItem>? _localItems;
+  _ResolvedFilter _filter = _ResolvedFilter.all;
 
   @override
   void initState() {
@@ -205,95 +213,153 @@ class _AdminResolvedScreenState extends State<AdminResolvedScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: StreamBuilder<List<LostFoundItem>>(
-        stream: _repo.streamNonTerminalItems(),
-        builder: (context, snapshot) {
-          // Sync local list from stream
-          if (snapshot.hasData && _localItems == null) {
-            _localItems = snapshot.data;
-          } else if (snapshot.hasData && _localItems != null) {
-            final streamIds = snapshot.data!.map((i) => i.id).toSet();
-            // Remove items from local that no longer exist in stream
-            _localItems = _localItems!
-                .where((i) => streamIds.contains(i.id))
-                .toList();
-          }
+      body: Column(
+        children: [
+          _buildFilterHeader(),
+          Expanded(
+            child: StreamBuilder<List<LostFoundItem>>(
+              stream: _repo.streamNonTerminalItems(),
+              builder: (context, snapshot) {
+                // Sync local list from stream
+                if (snapshot.hasData && _localItems == null) {
+                  _localItems = snapshot.data;
+                } else if (snapshot.hasData && _localItems != null) {
+                  final streamIds = snapshot.data!.map((i) => i.id).toSet();
+                  // Remove items from local that no longer exist in stream
+                  _localItems = _localItems!
+                      .where((i) => streamIds.contains(i.id))
+                      .toList();
+                }
 
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              _localItems == null) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
-          }
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    _localItems == null) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  );
+                }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_rounded,
-                      size: 44, color: AppColors.error),
-                  const SizedBox(height: 16),
-                  Text(
-                    snapshot.error.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final items = _localItems ?? snapshot.data ?? const <LostFoundItem>[];
-
-          if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: const BoxDecoration(
-                      color: AppColors.successSurface,
-                      shape: BoxShape.circle,
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cloud_off_rounded,
+                            size: 44, color: AppColors.error),
+                        const SizedBox(height: 16),
+                        Text(
+                          snapshot.error.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary),
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.verified_rounded,
-                        size: 36, color: AppColors.success),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'All resolved!',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'No pending items to resolve.',
-                    style: TextStyle(
-                        fontSize: 14, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            );
-          }
+                  );
+                }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return _ResolvedCard(
-                item: item,
-                onResolve: () => _markResolved(item),
-              );
-            },
-          );
-        },
+                final all = _localItems ?? snapshot.data ?? const <LostFoundItem>[];
+
+                // B7: filter the lifecycle by kind for the Found/Lost tabs.
+                final items = switch (_filter) {
+                  _ResolvedFilter.all => all,
+                  _ResolvedFilter.found => all
+                      .where((i) => i.kind == ItemKind.found)
+                      .toList(),
+                  _ResolvedFilter.lost => all
+                      .where((i) => i.kind == ItemKind.lost)
+                      .toList(),
+                };
+
+                if (items.isEmpty) {
+                  final scope = switch (_filter) {
+                    _ResolvedFilter.all => '',
+                    _ResolvedFilter.found => 'found ',
+                    _ResolvedFilter.lost => 'lost ',
+                  };
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: const BoxDecoration(
+                            color: AppColors.successSurface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.verified_rounded,
+                              size: 36, color: AppColors.success),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'All resolved!',
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No pending $scope items to resolve.',
+                          style: const TextStyle(
+                              fontSize: 14, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return _ResolvedCard(
+                      item: item,
+                      onResolve: () => _markResolved(item),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// B7: header control distinguishing Resolved Found vs Resolved Lost.
+  Widget _buildFilterHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: SegmentedButton<_ResolvedFilter>(
+        segments: const [
+          ButtonSegment(
+            value: _ResolvedFilter.all,
+            label: Text('All'),
+          ),
+          ButtonSegment(
+            value: _ResolvedFilter.found,
+            label: Text('Resolved Found'),
+            icon: Icon(Icons.inventory_2_rounded, size: 16),
+          ),
+          ButtonSegment(
+            value: _ResolvedFilter.lost,
+            label: Text('Resolved Lost'),
+            icon: Icon(Icons.fmd_bad_rounded, size: 16),
+          ),
+        ],
+        selected: {_filter},
+        onSelectionChanged: (selection) =>
+            setState(() => _filter = selection.first),
+        showSelectedIcon: false,
+        style: const ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          textStyle: WidgetStatePropertyAll(
+            TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
     );
   }
