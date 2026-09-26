@@ -24,6 +24,7 @@ class ProfileProvider extends ChangeNotifier {
 
   UserProfile? _user;
   List<PostModel> _posts = [];
+  List<LostFoundItem> _ownItems = [];
   bool _isLoading = false;
 
   int _reportsCount = 0;
@@ -32,6 +33,10 @@ class ProfileProvider extends ChangeNotifier {
 
   UserProfile? get user => _user;
   List<PostModel> get posts => _posts;
+
+  /// Every item the signed-in user submitted (any kind, any moderation
+  /// state), newest first. Drives the profile's "Found" / "Lost" sections.
+  List<LostFoundItem> get ownItems => _ownItems;
   bool get isLoading => _isLoading;
 
   int get reportsCount => _reportsCount;
@@ -74,6 +79,7 @@ class ProfileProvider extends ChangeNotifier {
     if (uid == null) {
       _user = null;
       _posts = [];
+      _ownItems = [];
       _reportsCount = 0;
       _foundCount = 0;
       _lostCount = 0;
@@ -105,6 +111,7 @@ class ProfileProvider extends ChangeNotifier {
 
     // Listen to user's items to compute report statistics (only approved items)
     _itemsSub = ItemRepository().streamUserItems(uid).listen((items) {
+      _ownItems = items;
       final approved = items.where((i) => i.moderationStatus == ModerationStatus.approved).toList();
       _reportsCount = approved.length;
       _foundCount = approved.where((i) => i.kind == ItemKind.found).length;

@@ -61,6 +61,8 @@ class PostGrid extends StatelessWidget {
 
         return GridView.builder(
           padding: const EdgeInsets.all(1),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             mainAxisSpacing: 1,
