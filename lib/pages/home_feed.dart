@@ -457,13 +457,23 @@ class _MyReportsStats extends StatelessWidget {
         final items = snapshot.data ?? const <LostFoundItem>[];
         final approved = items.where((i) => i.moderationStatus == ModerationStatus.approved).toList();
         final total = approved.length;
+        // "Pending" = every report that has not reached a terminal lifecycle
+        // state (claimed / resolved / archived).
+        final pending = approved.where((i) => !i.status.isTerminal).length;
         final lost = approved.where((i) => i.kind == ItemKind.lost).length;
         final found = approved.where((i) => i.kind == ItemKind.found).length;
-        final resolved = approved
-            .where((i) => i.status == ItemStatus.claimed || i.status == ItemStatus.closed)
-            .length;
+        final resolved = approved.where((i) => i.status.isTerminal).length;
 
         if (total == 0) return const SizedBox.shrink();
+
+        void openFilter(ReportsFilter filter) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UserReportsScreen(ownerUid: ownerUid, filter: filter),
+            ),
+          );
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -474,10 +484,11 @@ class _MyReportsStats extends StatelessWidget {
               children: [
                 Expanded(
                   child: _StatTile(
-                    label: 'Total',
-                    value: '$total',
-                    icon: Icons.receipt_long_rounded,
+                    label: 'Pending',
+                    value: '$pending',
+                    icon: Icons.pending_actions_rounded,
                     color: AppColors.primary,
+                    onTap: () => openFilter(ReportsFilter.pending),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -487,6 +498,7 @@ class _MyReportsStats extends StatelessWidget {
                     value: '$lost',
                     icon: Icons.fmd_bad_rounded,
                     color: AppColors.error,
+                    onTap: () => openFilter(ReportsFilter.lost),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -496,6 +508,7 @@ class _MyReportsStats extends StatelessWidget {
                     value: '$found',
                     icon: Icons.inventory_2_rounded,
                     color: AppColors.success,
+                    onTap: () => openFilter(ReportsFilter.found),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -505,6 +518,7 @@ class _MyReportsStats extends StatelessWidget {
                     value: '$resolved',
                     icon: Icons.check_circle_rounded,
                     color: AppColors.info,
+                    onTap: () => openFilter(ReportsFilter.resolved),
                   ),
                 ),
               ],
@@ -522,16 +536,18 @@ class _StatTile extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final tile = Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -561,6 +577,16 @@ class _StatTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+
+    if (onTap == null) return tile;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap!();
+      },
+      child: tile,
     );
   }
 }

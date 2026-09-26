@@ -5,6 +5,32 @@ import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
 import '../widgets/status_tracker_widget.dart';
 
+/// Which slice of the user's reports a [UserReportsScreen] should show.
+enum ReportsFilter { all, pending, lost, found, resolved }
+
+extension ReportsFilterX on ReportsFilter {
+  String get title => switch (this) {
+        ReportsFilter.all => 'My Reports',
+        ReportsFilter.pending => 'Pending Reports',
+        ReportsFilter.lost => 'Lost Reports',
+        ReportsFilter.found => 'Found Reports',
+        ReportsFilter.resolved => 'Resolved Reports',
+      };
+
+  /// Applies this filter to the raw list of the user's own items.
+  List<LostFoundItem> apply(List<LostFoundItem> items) => switch (this) {
+        ReportsFilter.all => items,
+        ReportsFilter.pending =>
+          items.where((i) => !i.status.isTerminal).toList(),
+        ReportsFilter.lost =>
+          items.where((i) => i.kind == ItemKind.lost).toList(),
+        ReportsFilter.found =>
+          items.where((i) => i.kind == ItemKind.found).toList(),
+        ReportsFilter.resolved =>
+          items.where((i) => i.status.isTerminal).toList(),
+      };
+}
+
 /// User's "My Reports" screen — shows all items they submitted
 /// with status badges and a full status tracker on tap.
 class UserReportsScreen extends StatefulWidget {
@@ -12,10 +38,14 @@ class UserReportsScreen extends StatefulWidget {
     super.key,
     required this.ownerUid,
     this.repository,
+    this.filter = ReportsFilter.all,
   });
 
   final String ownerUid;
   final ItemRepository? repository;
+
+  /// Optional category filter (pending / lost / found / resolved).
+  final ReportsFilter filter;
 
   @override
   State<UserReportsScreen> createState() => _UserReportsScreenState();
@@ -45,7 +75,9 @@ class _UserReportsScreenState extends State<UserReportsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('My Reports')),
+      appBar: AppBar(
+        title: Text(widget.filter == ReportsFilter.all ? 'My Reports' : widget.filter.title),
+      ),
       body: StreamBuilder<List<LostFoundItem>>(
         stream: _repo.streamUserItems(widget.ownerUid),
         builder: (context, snapshot) {
@@ -72,9 +104,10 @@ class _UserReportsScreenState extends State<UserReportsScreen> {
             );
           }
 
-          final items = snapshot.data ?? const <LostFoundItem>[];
+          final items = widget.filter.apply(snapshot.data ?? const <LostFoundItem>[]);
 
           if (items.isEmpty) {
+            final filtered = widget.filter != ReportsFilter.all;
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -89,14 +122,17 @@ class _UserReportsScreenState extends State<UserReportsScreen> {
                     child: const Icon(Icons.receipt_long_rounded, size: 36, color: AppColors.textTertiary),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
-                    'No reports yet',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  Text(
+                    filtered ? 'Nothing here yet' : 'No reports yet',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Items you report will appear here.',
-                    style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                  Text(
+                    filtered
+                        ? '${widget.filter.title} will appear here.'
+                        : 'Items you report will appear here.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                   ),
                 ],
               ),
