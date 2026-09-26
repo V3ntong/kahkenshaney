@@ -58,7 +58,6 @@ class _HomePageState extends State<HomePage> {
         photoUrl: widget.photoUrl,
         ownerUid: widget.ownerUid,
         overlayDismissed: widget.overlayDismissed,
-        onAiScan: () => _comingSoon('AI Scan'),
         onTabSelected: _goToTab,
         onComingSoon: _comingSoon,
         onNotifications: _showNotifications,

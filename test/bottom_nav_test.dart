@@ -37,7 +37,6 @@ void main() {
     expect(find.byTooltip('Found'), findsOneWidget);
     expect(find.byTooltip('Messages'), findsOneWidget);
 
-    expect(find.byTooltip('AI Scan'), findsNothing);
     expect(find.byTooltip('Profile'), findsNothing);
   });
 

@@ -316,13 +316,6 @@ class _ChatScreenState extends State<ChatScreen> {
               alignment: WrapAlignment.center,
               children: [
                 _QuickChip(
-                  label: 'What is AI Scan?',
-                  onTap: () {
-                    _controller.text = 'What is AI Scan?';
-                    _send();
-                  },
-                ),
-                _QuickChip(
                   label: 'How does matching work?',
                   onTap: () {
                     _controller.text = 'How does matching work?';

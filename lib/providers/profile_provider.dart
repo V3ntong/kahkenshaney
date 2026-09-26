@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/firestore/item_repository.dart';
+import '../data/storage/storage_service.dart';
 import '../models/lost_found_item.dart';
 import '../models/post_model.dart';
 import '../models/user_profile.dart';
@@ -106,7 +107,10 @@ class ProfileProvider extends ChangeNotifier {
       final ref = _storage.ref(path);
       await ref.putFile(
         imageFile,
-        SettableMetadata(customMetadata: {'metadataUploaderId': uid}),
+        SettableMetadata(
+          contentType: StorageService.contentTypeFor(imageFile.path),
+          customMetadata: {'metadataUploaderId': uid},
+        ),
       );
       final imageUrl = await ref.getDownloadURL();
 
@@ -141,7 +145,10 @@ class ProfileProvider extends ChangeNotifier {
       final ref = _storage.ref(path);
       await ref.putFile(
         imageFile,
-        SettableMetadata(customMetadata: {'metadataUploaderId': uid}),
+        SettableMetadata(
+          contentType: StorageService.contentTypeFor(imageFile.path),
+          customMetadata: {'metadataUploaderId': uid},
+        ),
       );
       final photoUrl = await ref.getDownloadURL();
 

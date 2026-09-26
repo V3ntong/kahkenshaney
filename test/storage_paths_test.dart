@@ -29,5 +29,19 @@ void main() {
       final path = '${StorageService.itemFolderRoot('lost')}/$fileName';
       expect(path, 'lost_and_found/lost/abc123_1720000000000_0.jpg');
     });
+
+    test('contentTypeFor always yields image/* for known and unknown paths', () {
+      // Regression: uploads without an explicit image/* contentType are
+      // denied by storage.rules (`request.resource.contentType.matches`).
+      expect(StorageService.contentTypeFor('photo.jpg'), 'image/jpeg');
+      expect(StorageService.contentTypeFor('photo.JPEG'), 'image/jpeg');
+      expect(StorageService.contentTypeFor('photo.png'), 'image/png');
+      expect(StorageService.contentTypeFor('photo.webp'), 'image/webp');
+      expect(StorageService.contentTypeFor('photo.gif'), 'image/gif');
+      expect(StorageService.contentTypeFor('photo.heic'), 'image/heic');
+      expect(StorageService.contentTypeFor('photo.heif'), 'image/heif');
+      expect(StorageService.contentTypeFor('no_extension'), 'image/jpeg');
+      expect(StorageService.contentTypeFor('weird.txt'), 'image/jpeg');
+    });
   });
 }

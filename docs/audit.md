@@ -26,7 +26,6 @@
 | Image Gallery page | 🐛 Broken path | `storage_service.dart:66` reads `ref(folderName)` but uploads live under `lost_and_found/{folder}` (P1-4) | P0 | S |
 | User profile creation | 🐛 `adminEmails` query | `database_service.dart:88-101` queries unreadable `adminEmails` collection → aborts profile writes (P1-1); client-side `isAdmin` write path (P1-2) | P0 | S |
 | Firestore rules privilege escalation | 🐛 Self-promotion | `firestore.rules` `users/{uid}` update allows self-edit of `isAdmin` (P1-2) | P0 | S |
-| AI Camera Scanner | ⛔ Stub | `ai_scan_page.dart:28` shows "coming soon" snackbar | P2 | XL |
 | Admin Reports section | ⛔ Stub | `admin_dashboard.dart:271` → `_SectionPlaceholder` "coming soon" | P2 | M |
 | Filters on Browse page | ⛔ Stub | `home_feed.dart:218` `onFilter: () => _comingSoon('Filters')` | P2 | M |
 | Admin Lost/Found item list sections | ⛔ Stub | `admin_dashboard.dart:2163` placeholder | P2 | M |
@@ -36,10 +35,9 @@
 
 ## Stubs / TODOs Found
 
-- `lib/widgets/coming_soon_page.dart` — generic stub screen (still used by AI scan entry).
-- `lib/pages/ai_scan_page.dart:28` — "AI analysis coming soon."
+- `lib/widgets/coming_soon_page.dart` — generic stub screen.
 - `lib/screens/admin_dashboard.dart:271,286,2163,3039-3075` — placeholder admin sections ("This admin section is coming soon.").
-- `lib/pages/home_feed.dart:112,200,218,224,232` — `_comingSoon` snackbars (Profile fallback, Notifications fallback, Filters, AI Scan, More features).
+- `lib/pages/home_feed.dart:112,200,218,224,232` — `_comingSoon` snackbars (Profile fallback, Notifications fallback, Filters, More features).
 - `lib/pages/home_page.dart:61,116-120` — `_comingSoon` snackbar helper.
 
 ## Phase 1 Findings (file:line)
@@ -53,7 +51,6 @@
 
 ## Out of Scope (confirmed pending, not part of this session)
 
-- AI Camera Scanner (Gemini Vision integration)
 - Admin Reports section with export
 - Moving the Gemini API key server-side
 - Emulator-based Firestore/Storage rule tests (require `firebase emulators:exec` + credentials; provided as documented manual checks instead)

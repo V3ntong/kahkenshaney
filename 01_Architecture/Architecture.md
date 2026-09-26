@@ -60,7 +60,6 @@ lib/
 │   ├── item_list_page.dart            # List layout for items (unused by tabs)
 │   ├── items_grid_page.dart           # 2-column grid for Lost/Found tabs (Firestore)
 │   ├── reports_page.dart              # Reports tab (coming soon)
-│   ├── ai_scan_page.dart              # AI camera scanner (placeholder)
 │   ├── choose_action_page.dart        # Choose: Report Lost or Submit Found
 │   ├── report_lost_page.dart          # Form: report a lost item
 │   └── submit_found_page.dart         # Form: submit a found item

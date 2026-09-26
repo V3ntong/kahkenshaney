@@ -40,7 +40,7 @@ class StorageService {
       final fileName = '${itemId}_${stamp}_$i.jpg';
       final path = '${itemFolderRoot(folder)}/$fileName';
       final ref = _storage.ref(path);
-      await ref.putFile(images[i], _uploadMetadata(userId));
+      await ref.putFile(images[i], _uploadMetadata(userId, images[i].path));
       final url = await ref.getDownloadURL();
       results.add(UploadResult(url: url, path: path));
     }
@@ -76,10 +76,34 @@ class StorageService {
   /// Shared by upload and gallery reads so they can never drift apart.
   static String itemFolderRoot(String folder) => 'lost_and_found/$folder';
 
-  SettableMetadata _uploadMetadata(String? userId) {
-    if (userId == null || userId.isEmpty) return SettableMetadata();
+  /// MIME type derived from [path]'s extension. Uploads must always carry an
+  /// explicit `contentType`: the Storage rules require `image/.*` and reject
+  /// a platform-inferred `application/octet-stream` (same convention as
+  /// ChatImageUploader).
+  static String contentTypeFor(String path) {
+    final dot = path.lastIndexOf('.');
+    final ext = dot < 0 ? '' : path.substring(dot + 1).toLowerCase();
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  SettableMetadata _uploadMetadata(String? userId, String filePath) {
     return SettableMetadata(
-      customMetadata: {'metadataUploaderId': userId},
+      contentType: contentTypeFor(filePath),
+      customMetadata:
+          (userId == null || userId.isEmpty) ? null : {'metadataUploaderId': userId},
     );
   }
 

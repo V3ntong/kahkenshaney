@@ -67,7 +67,7 @@ Forgot Password ──sendPasswordResetOtp──> OTP(resetPassword) ──> Res
 
 | Tab | Screen | Entry points |
 |----|--------|--------------|
-| 0 | Home feed | Search → BrowseItemsPage(initialSearchQuery) · Filter → BrowseItemsPage · Report Lost/Found → /choose-action · AI Scan → "coming soon" snackbar · Notifications bell → NotificationsScreen · item tap → ItemDetailScreen · avatar menu → Profile / Change Password / My Reports / Settings / Log out |
+| 0 | Home feed | Search → BrowseItemsPage(initialSearchQuery) · Filter → BrowseItemsPage · Report Lost/Found → /choose-action · Notifications bell → NotificationsScreen · item tap → ItemDetailScreen · avatar menu → Profile / Change Password / My Reports / Settings / Log out |
 | 1 | Lost grid | CTA → /report-lost · item → ItemDetailScreen · gallery → ImageGalleryPage |
 | 2 | Reports (resolved feed) | item → ItemDetailScreen |
 | 3 | Found grid | CTA → /submit-found · item → ItemDetailScreen |

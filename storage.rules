@@ -14,7 +14,7 @@ service firebase.storage {
 
       // Only the uploader (matched via custom metadata) can delete.
       allow delete: if request.auth != null
-        && request.auth.uid == resource.metadataUploaderId;
+        && request.auth.uid == resource.metadata.metadataUploaderId;
     }
 
     // ── profile images (posts + avatars) ─────────────────────────────────
@@ -29,7 +29,7 @@ service firebase.storage {
       // Owners can delete their own uploads (path-scoped or via metadata).
       allow delete: if request.auth != null
         && (request.auth.uid == uid
-            || request.auth.uid == resource.metadataUploaderId);
+            || request.auth.uid == resource.metadata.metadataUploaderId);
     }
 
     // ── chat images ──────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ service firebase.storage {
 
       // Only the uploader (via custom metadata) can delete.
       allow delete: if request.auth != null
-        && request.auth.uid == resource.metadataUploaderId;
+        && request.auth.uid == resource.metadata.metadataUploaderId;
     }
 
     // ── everything else (legacy paths) ───────────────────────────────────

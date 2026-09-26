@@ -27,7 +27,6 @@ const SYSTEM_INSTRUCTION =
   'Report Lost Items — report lost items with details. ' +
   'Submit Found Items — submit found items for matching. ' +
   'AI Matching — AI matches lost and found items. ' +
-  'AI Camera Scanner — point camera to identify items. ' +
   'User Authentication — email/password + OTP. ' +
   'Real-time Updates — live Firestore streams. ' +
   'Profile Management — view profile, change password. ' +

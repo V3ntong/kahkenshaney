@@ -24,9 +24,8 @@
 5. Implemented authentication flow (Login, Signup, OTP, Forgot Password, Change Password).
 6. Built core UI: MainPage, Dashboard, HomeFeed, Profile, Messages.
 7. Created item reporting system (Report Lost, Submit Found).
-8. Added AI Scan page (camera placeholder with scanning animation).
-9. Implemented Firestore data layer (`ItemRepository`, `StorageService`).
-10. Built reusable widget library (27 widgets).
+8. Implemented Firestore data layer (`ItemRepository`, `StorageService`).
+9. Built reusable widget library (27 widgets).
 
 ### Obstacles / Bugs Encountered:
 * *Issue:* Gradle build failure on initial Android sync.

@@ -26,7 +26,6 @@ class HomeFeed extends StatefulWidget {
     this.photoUrl,
     this.ownerUid,
     this.overlayDismissed = false,
-    this.onAiScan,
     this.onTabSelected,
     this.onComingSoon,
     this.onNotifications,
@@ -39,7 +38,6 @@ class HomeFeed extends StatefulWidget {
   final String? photoUrl;
   final String? ownerUid;
   final bool overlayDismissed;
-  final VoidCallback? onAiScan;
   final ValueChanged<int>? onTabSelected;
   final ValueChanged<String>? onComingSoon;
   final VoidCallback? onNotifications;
@@ -258,7 +256,6 @@ class _HomeFeedState extends State<HomeFeed> {
       _PrimaryActions(
         onReportLost: _openChooseAction,
         onReportFound: _openChooseAction,
-        onAiScan: widget.onAiScan ?? () => _comingSoon('AI Scan'),
       ),
       const SizedBox(height: 24),
       if (widget.ownerUid != null && widget.ownerUid!.isNotEmpty)
@@ -349,12 +346,10 @@ class _PrimaryActions extends StatelessWidget {
   const _PrimaryActions({
     required this.onReportLost,
     required this.onReportFound,
-    required this.onAiScan,
   });
 
   final VoidCallback onReportLost;
   final VoidCallback onReportFound;
-  final VoidCallback onAiScan;
 
   @override
   Widget build(BuildContext context) {
@@ -379,17 +374,6 @@ class _PrimaryActions extends StatelessWidget {
             onTap: onReportFound,
           ),
         ),
-        const SizedBox(width: 10),
-        Flexible(
-          child: _ActionPill(
-            label: 'AI Scan',
-            icon: Icons.auto_awesome_rounded,
-            color: AppColors.primary,
-            surface: AppColors.primarySurface,
-            onTap: onAiScan,
-            compact: true,
-          ),
-        ),
       ],
     );
   }
@@ -402,7 +386,6 @@ class _ActionPill extends StatelessWidget {
     required this.color,
     required this.surface,
     required this.onTap,
-    this.compact = false,
   });
 
   final String label;
@@ -410,7 +393,6 @@ class _ActionPill extends StatelessWidget {
   final Color color;
   final Color surface;
   final VoidCallback onTap;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -420,9 +402,9 @@ class _ActionPill extends StatelessWidget {
         onTap();
       },
       child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 14 : 16,
-          vertical: compact ? 12 : 14,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
         ),
         decoration: BoxDecoration(
           color: surface,
@@ -431,24 +413,22 @@ class _ActionPill extends StatelessWidget {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          mainAxisSize: MainAxisSize.max,
           children: [
             Icon(icon, size: 18, color: color),
-            if (!compact) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
+            ),
           ],
         ),
       ),

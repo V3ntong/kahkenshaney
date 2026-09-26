@@ -47,7 +47,6 @@ AI and ML-powered Lost & Found application that turns your lost into found, with
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **AI Camera Scanner** | Placeholder | UI exists but no actual AI/Gemini integration |
 | **Admin Sidebar Sections** | Placeholder | Reports section shows placeholder |
 | **Pull-to-refresh** | Partial | Exists on browse page, missing on grid pages |
 
@@ -72,23 +71,22 @@ AI and ML-powered Lost & Found application that turns your lost into found, with
 
 ### Priority 2: Core Features
 
-4. **AI Camera Scanner** — Integrate Gemini Vision API for real-time item recognition and matching
-5. **Admin Inbox Polish** — Unread badges and last-message preview in `admin_inbox_screen.dart`
+4. **Admin Inbox Polish** — Unread badges and last-message preview in `admin_inbox_screen.dart`
 
 ### Priority 3: Admin Features
 
-6. **Admin Lost Items Section** — Show all lost items with filters (status, date, category)
-7. **Admin Found Items Section** — Show all found items with filters
-8. **Admin Reports Section** — Aggregated reports view with export capability
-9. **Image Compression** — Compress before upload to save storage/bandwidth
+5. **Admin Lost Items Section** — Show all lost items with filters (status, date, category)
+6. **Admin Found Items Section** — Show all found items with filters
+7. **Admin Reports Section** — Aggregated reports view with export capability
+8. **Image Compression** — Compress before upload to save storage/bandwidth
 
 ### Priority 4: Polish & UX
 
-10. **Pull-to-refresh** — Add to all grid/list pages
-11. **Loading Skeletons** — Replace spinners with shimmer placeholders
-12. **Empty States** — Better empty state illustrations and messaging
-13. **Error Handling** — Graceful network error handling with retry options
-14. **App Check** — Configure Firebase App Check to stop placeholder token warnings
+9. **Pull-to-refresh** — Add to all grid/list pages
+10. **Loading Skeletons** — Replace spinners with shimmer placeholders
+11. **Empty States** — Better empty state illustrations and messaging
+12. **Error Handling** — Graceful network error handling with retry options
+13. **App Check** — Configure Firebase App Check to stop placeholder token warnings
 
 ### Priority 5: Tech Debt (DONE 2026-09-04)
 
@@ -127,7 +125,6 @@ lib/
     choose_action_page.dart  — Gateway before lost/found forms
     messages_page.dart       — User chat with admin
     profile_page.dart        — User profile (read-only)
-    ai_scan_page.dart        — AI camera scanner (placeholder)
     image_gallery_page.dart  — Image gallery (placeholder)
     item_list_page.dart      — Item list view
   services/
