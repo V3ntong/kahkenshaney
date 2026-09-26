@@ -45,12 +45,19 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen>
+    with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _chatService = ChatService();
   bool _isTyping = false;
   bool _historyLoaded = false;
+
+  /// C3: drives the shimmer sweep on the skeleton "thinking" bubble.
+  late final AnimationController _shimmerCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat();
 
   /// Last failure, kept so the message list can show a persistent inline
   /// error with a Retry action instead of a transient snackbar.
@@ -62,6 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _shimmerCtrl.dispose();
     super.dispose();
   }
 
@@ -346,44 +354,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  /// C3: skeleton loading animation replacing the old
+  /// "KashTeP is thinking..." text + spinner — a shimmer placeholder shaped
+  /// like an assistant chat bubble (no external shimmer package needed).
   Widget _buildTypingIndicator() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.smart_toy_rounded,
-              color: Colors.white,
-              size: 16,
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'KashTeP is thinking...',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textTertiary,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
-      ),
+    return Semantics(
+      label: 'KashTeP is thinking',
+      child: _ShimmerBubble(animation: _shimmerCtrl),
     );
   }
 
@@ -480,6 +457,83 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// C3: skeleton placeholder bubble shown while KashTeP is generating a
+/// reply — mirrors the assistant bubble's shape with shimmering content bars.
+class _ShimmerBubble extends StatelessWidget {
+  const _ShimmerBubble({required this.animation});
+
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.62,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(16),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ShimmerBar(width: 148, height: 12, animation: animation),
+            const SizedBox(height: 8),
+            _ShimmerBar(width: 108, height: 12, animation: animation),
+            const SizedBox(height: 8),
+            _ShimmerBar(width: 64, height: 12, animation: animation),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single skeleton bar with a gradient sweep driven by [animation].
+class _ShimmerBar extends AnimatedWidget {
+  const _ShimmerBar({
+    required Animation<double> animation,
+    required this.width,
+    required this.height,
+  })  : _animation = animation,
+        super(listenable: animation);
+
+  final Animation<double> _animation;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _animation.value;
+    final base = AppColors.cardBorder;
+    final shine = Colors.white.withValues(alpha: 0.85);
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(height / 2),
+        gradient: LinearGradient(
+          // Band sweeps from fully off-left (-2..-1) to fully off-right
+          // (2..3) across the animation cycle.
+          begin: Alignment(3 * t - 2, 0),
+          end: Alignment(3 * t - 1, 0),
+          colors: [base, shine, base],
+        ),
       ),
     );
   }
