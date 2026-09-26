@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../data/firestore/item_repository.dart';
 import '../data/firestore/notification_service.dart';
 import '../models/lost_found_item.dart';
+import '../models/resolved_feed_entry.dart';
 import '../screens/item_detail_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/user_reports_screen.dart';
@@ -260,6 +261,8 @@ class _HomeFeedState extends State<HomeFeed> {
       const SizedBox(height: 24),
       if (widget.ownerUid != null && widget.ownerUid!.isNotEmpty)
         _MyReportsStats(ownerUid: widget.ownerUid!),
+      const SizedBox(height: 24),
+      const _RecentlyResolvedSection(),
       const SizedBox(height: 24),
       _SectionHeader(
         title: 'Explore',
@@ -789,4 +792,251 @@ class _SectionHeader extends StatelessWidget {
       ],
     );
   }
+}
+
+// ─── Recently Resolved (public feed, A1) ──────────────────────────────────
+
+/// Public success-story feed published server-side when a claim is approved.
+/// Separate from "My Reports" and "Explore"; display names only, no PII.
+class _RecentlyResolvedSection extends StatelessWidget {
+  const _RecentlyResolvedSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final Stream<List<ResolvedFeedEntry>> stream;
+    try {
+      stream = ItemRepository().streamResolvedFeed();
+    } catch (_) {
+      // Firebase not initialized (startup/tests) — skip the section.
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<List<ResolvedFeedEntry>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final entries = snapshot.data ?? const <ResolvedFeedEntry>[];
+        if (entries.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SectionHeader(title: 'Recently Resolved'),
+            const SizedBox(height: 12),
+            for (var i = 0; i < entries.length; i++) ...[
+              _ResolvedFeedCard(entry: entries[i]),
+              if (i != entries.length - 1) const SizedBox(height: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ResolvedFeedCard extends StatelessWidget {
+  const _ResolvedFeedCard({required this.entry});
+
+  final ResolvedFeedEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = entry.imageUrl;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: imageUrl != null && imageUrl.isNotEmpty
+                    ? Image.network(
+                        imageUrl,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const _ResolvedFeedThumb(),
+                      )
+                    : const _ResolvedFeedThumb(),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (entry.category != null &&
+                            entry.category!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceVariant,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              entry.category!,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.textSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 10),
+          _FeedMetaRow(
+            icon: Icons.search_rounded,
+            iconColor: AppColors.success,
+            text: 'Found by ${entry.finderName ?? 'Someone'}',
+            trailing: _formatFeedDate(entry.foundAt),
+          ),
+          if (entry.foundLocation != null &&
+              entry.foundLocation!.isNotEmpty)
+            _FeedMetaRow(
+              icon: Icons.place_rounded,
+              iconColor: AppColors.textTertiary,
+              text: entry.foundLocation!,
+            ),
+          if (entry.claimerName != null) ...[
+            const SizedBox(height: 6),
+            _FeedMetaRow(
+              icon: Icons.verified_rounded,
+              iconColor: AppColors.primary,
+              text: 'Claimed by ${entry.claimerName}',
+              trailing: _formatFeedDate(entry.claimAt),
+            ),
+            if (entry.claimLocation != null &&
+                entry.claimLocation!.isNotEmpty)
+              _FeedMetaRow(
+                icon: Icons.storefront_rounded,
+                iconColor: AppColors.textTertiary,
+                text: entry.claimLocation!,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ResolvedFeedThumb extends StatelessWidget {
+  const _ResolvedFeedThumb();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(
+        Icons.inventory_2_rounded,
+        size: 30,
+        color: AppColors.textTertiary,
+      ),
+    );
+  }
+}
+
+class _FeedMetaRow extends StatelessWidget {
+  const _FeedMetaRow({
+    required this.icon,
+    required this.iconColor,
+    required this.text,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String text;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: iconColor),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          if (trailing != null && trailing!.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Text(
+              trailing!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _formatFeedDate(DateTime? date) {
+  if (date == null) return '';
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final local = date.toLocal();
+  return '${months[local.month - 1]} ${local.day}, ${local.year}';
 }

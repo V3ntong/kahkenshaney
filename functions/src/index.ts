@@ -18,6 +18,7 @@ import {
   validateResolve,
 } from './claims';
 import { sendAdminInviteEmail, sendOtpEmail } from './email';
+import { publishResolvedFeedEntry } from './resolved_feed';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {
   isValidEmail,
@@ -729,6 +730,17 @@ export const itemLifecycle = onDocumentUpdated(
       after.moderationStatus === 'approved'
     ) {
       await runMatchingForItem(event.params.itemId);
+    }
+
+    // Item reached a claim-approved state → publish a public, PII-free
+    // entry to the homepage "Recently Resolved" feed (A1). Writes only for
+    // publicly visible (approved) items; client writes to the collection
+    // are denied by security rules.
+    if (
+      before.status !== after.status &&
+      (after.status === 'claimed' || after.status === 'resolved')
+    ) {
+      await publishResolvedFeedEntry(event.params.itemId, after);
     }
 
     // Status changed to claimed/resolved → notify the claimer (if any).

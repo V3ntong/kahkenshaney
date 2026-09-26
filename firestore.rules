@@ -40,6 +40,15 @@ service cloud.firestore {
         && (resource.data.ownerUid == request.auth.uid || isAdmin());
     }
 
+    // ── resolvedFeed (public homepage "Recently Resolved" feed, A1) ──────
+    // Entries contain display names and item photos only (no email/phone/
+    // user IDs) and are written exclusively by Cloud Functions when a claim
+    // is approved. All signed-in users may read the feed; no client writes.
+    match /resolvedFeed/{entryId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // ── users ────────────────────────────────────────────────────────────
     match /users/{uid} {
       allow read: if request.auth != null;

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/lost_found_item.dart';
+import '../../models/resolved_feed_entry.dart';
 
 /// Firestore data access for lost & found items (`items/{itemId}`).
 class ItemRepository {
@@ -181,6 +182,25 @@ class ItemRepository {
   /// Update item fields.
   Future<void> updateItem(LostFoundItem item) async {
     await _items.doc(item.id).update(item.toMap());
+  }
+
+  /// Public stream of the homepage "Recently Resolved" feed
+  /// (`resolvedFeed/{itemId}`), written server-side by Cloud Functions when
+  /// a claim is approved. Readable by every signed-in user.
+  Stream<List<ResolvedFeedEntry>> streamResolvedFeed({int limit = 8}) {
+    return _firestore
+        .collection('resolvedFeed')
+        .orderBy('resolvedAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map(
+      (snap) => snap.docs
+          .map((doc) => ResolvedFeedEntry.fromMap(doc.id, doc.data()))
+          .toList(),
+    ).handleError((error) {
+      debugPrint('[ItemRepository] streamResolvedFeed error: $error');
+      return <ResolvedFeedEntry>[];
+    });
   }
 
   /// Update specific fields only (partial update).
