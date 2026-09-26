@@ -21,12 +21,14 @@ import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/image_picker_sheet.dart';
+import '../widgets/item_grid_card.dart';
 import 'admin_inbox_screen.dart';
 import 'admin_items_list_screen.dart';
 import 'admin_resolved_screen.dart';
 import 'admin_review_queue_screen.dart';
 import 'auth/login.dart';
 import 'dashboard.dart';
+import 'item_detail_screen.dart';
 
 const _monthAbbr = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -59,6 +61,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Stream<int>? _adminUnreadStream;
   int _adminUnreadCount = 0;
 
+  /// B4 (avatar bug): live copy of the admin's own `users/{uid}` doc so the
+  /// sidebar/app-bar avatar and display name refresh after a photo or name
+  /// change anywhere — same root cause as A6 (one-shot reads go stale).
+  Map<String, dynamic>? _adminProfile;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _adminProfileSub;
+
   int _selectedIndex = 0;
 
   @override
@@ -78,12 +86,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _guardRoute();
       _initProfile();
       _listenAdminUnread();
+      _watchAdminProfile();
     });
   }
 
   @override
   void dispose() {
     _adminUnreadSub?.cancel();
+    _adminProfileSub?.cancel();
     super.dispose();
   }
 
@@ -94,6 +104,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (!mounted) return;
       setState(() => _adminUnreadCount = unread);
     });
+  }
+
+  /// B4: live listener on the admin's own user document.
+  void _watchAdminProfile() {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null || uid.isEmpty) return;
+      _adminProfileSub = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .snapshots()
+          .listen(
+        (snap) {
+          if (!mounted) return;
+          setState(() => _adminProfile = snap.exists ? snap.data() : null);
+        },
+        onError: (_) {},
+      );
+    } catch (e) {
+      // Firebase not initialized (tests/offline) — avatar stays on fallback.
+      debugPrint('[AdminDashboard] _watchAdminProfile error: $e');
+    }
   }
 
   /// Asks the server to set `isAdmin: true` on this user's document when
@@ -230,6 +262,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     final adminName = _adminName();
     final adminEmail = _adminEmail();
+    final photoUrl = _adminPhotoUrl;
 
     final sections = _sidebarSections;
     final sidebar = _Sidebar(
@@ -239,6 +272,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       adminName: adminName,
       adminEmail: adminEmail,
       unreadCount: _adminUnreadCount,
+      photoUrl: _adminPhotoUrl,
     );
 
     return LayoutBuilder(
@@ -274,7 +308,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: _AvatarBadge(initial: adminName[0].toUpperCase(), size: 34),
+                  child: _AvatarBadge(
+                    initial: adminName[0].toUpperCase(),
+                    size: 34,
+                    photoUrl: photoUrl,
+                  ),
                 ),
               ],
             ),
@@ -333,6 +371,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           adminUid: _auth.currentUser?.uid ?? '',
           adminName: adminName,
           adminEmail: _adminEmail(),
+          itemsStream: _itemsStream,
         );
       case 7:
         return _SettingsSection(onNotice: _showNotice);
@@ -346,9 +385,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   String _adminName() {
+    // Prefer the live user doc (updates when the name is edited), fall back
+    // to the auth record.
+    final docName = (_adminProfile?['displayName'] as String?)?.trim();
+    if (docName != null && docName.isNotEmpty) return docName;
     final name = _auth.currentUser?.displayName?.trim();
     return (name == null || name.isEmpty) ? 'Admin' : name;
   }
+
+  String? get _adminPhotoUrl =>
+      (_adminProfile?['photoUrl'] as String?) ?? _auth.currentUser?.photoURL;
 
   String _adminEmail() => _auth.currentUser?.email ?? '';
 
@@ -377,6 +423,7 @@ class _Sidebar extends StatelessWidget {
     required this.adminName,
     required this.adminEmail,
     this.unreadCount = 0,
+    this.photoUrl,
   });
 
   final List<_NavItem> sections;
@@ -385,6 +432,9 @@ class _Sidebar extends StatelessWidget {
   final String adminName;
   final String adminEmail;
   final int unreadCount;
+
+  /// B4: live admin avatar URL (null shows the initial placeholder).
+  final String? photoUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -447,7 +497,11 @@ class _Sidebar extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
               child: Row(
                 children: [
-                  _AvatarBadge(initial: adminName[0].toUpperCase(), size: 30),
+                  _AvatarBadge(
+                    initial: adminName[0].toUpperCase(),
+                    size: 30,
+                    photoUrl: photoUrl,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -553,10 +607,18 @@ class _SidebarItem extends StatelessWidget {
 }
 
 class _AvatarBadge extends StatelessWidget {
-  const _AvatarBadge({required this.initial, required this.size});
+  const _AvatarBadge({
+    required this.initial,
+    required this.size,
+    this.photoUrl,
+  });
 
   final String initial;
   final double size;
+
+  /// B4: when set (live user-doc photo) the circle shows the real avatar
+  /// instead of the gradient + initial placeholder.
+  final String? photoUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -565,17 +627,34 @@ class _AvatarBadge extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        gradient: AppColors.heroGradient,
+        gradient: photoUrl == null ? AppColors.heroGradient : null,
         shape: BoxShape.circle,
       ),
-      child: Text(
-        initial,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: size * 0.42,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+      child: photoUrl != null
+          ? ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: photoUrl!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorWidget: (_, _, _) => Text(
+                  initial,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: size * 0.42,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            )
+          : Text(
+              initial,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.42,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
     );
   }
 }
@@ -3056,11 +3135,17 @@ class _AdminProfileSection extends StatefulWidget {
     required this.adminUid,
     required this.adminName,
     required this.adminEmail,
+    this.itemsStream,
   });
 
   final String adminUid;
   final String adminName;
   final String adminEmail;
+
+  /// B4: the dashboard's all-items stream — filtered here to the admin's own
+  /// reports so the "Found" / "Lost" counts auto-increment when the admin
+  /// files a report (B2).
+  final Stream<List<LostFoundItem>>? itemsStream;
 
   @override
   State<_AdminProfileSection> createState() => _AdminProfileSectionState();
@@ -3072,39 +3157,54 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
   bool _saving = false;
   bool _editing = false;
   String? _photoUrl;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _profileSub;
 
   @override
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.adminName);
     _bioCtrl = TextEditingController(text: '');
-    _loadProfile();
+    _watchProfile();
   }
 
   @override
   void dispose() {
+    _profileSub?.cancel();
     _nameCtrl.dispose();
     _bioCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadProfile() async {
+  /// B4 (avatar bug): live listener replaces the old one-shot read so the
+  /// avatar/name stay in sync with any change (self or elsewhere).
+  void _watchProfile() {
     if (widget.adminUid.isEmpty) return;
     try {
-      final doc = await FirebaseFirestore.instance
+      _profileSub = FirebaseFirestore.instance
           .collection('users')
           .doc(widget.adminUid)
-          .get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        setState(() {
-          _nameCtrl.text = (data['displayName'] as String?) ?? widget.adminName;
-          _bioCtrl.text = (data['bio'] as String?) ?? '';
-          _photoUrl = data['photoUrl'] as String?;
-        });
-      }
+          .snapshots()
+          .listen(
+        (doc) {
+          if (!mounted || !doc.exists || doc.data() == null) return;
+          final data = doc.data()!;
+          setState(() {
+            _photoUrl = data['photoUrl'] as String?;
+            // Don't clobber fields being edited right now.
+            if (!_editing) {
+              _nameCtrl.text =
+                  (data['displayName'] as String?) ?? widget.adminName;
+              _bioCtrl.text = (data['bio'] as String?) ?? '';
+            }
+          });
+        },
+        onError: (e) {
+          debugPrint('[AdminProfile] profile stream error: $e');
+        },
+      );
     } catch (e) {
-      debugPrint('[AdminProfile] _loadProfile error: $e');
+      // Firebase not initialized (tests/offline) — keep initial values.
+      debugPrint('[AdminProfile] _watchProfile error: $e');
     }
   }
 
@@ -3373,9 +3473,140 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
               ],
             ),
           ),
+          // B4: mirror the user profile's "Found" / "Lost" sections for the
+          // admin's own reports. Counts come from the live items stream, so
+          // filing a report (B2) increments them immediately.
+          StreamBuilder<List<LostFoundItem>>(
+            stream: widget.itemsStream,
+            builder: (context, snapshot) {
+              final ownItems = (snapshot.data ?? const <LostFoundItem>[])
+                  .where((item) => item.ownerUid == widget.adminUid)
+                  .toList();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _AdminOwnItemsSection(
+                    title: 'Found',
+                    kind: ItemKind.found,
+                    items: ownItems,
+                  ),
+                  _AdminOwnItemsSection(
+                    title: 'Lost',
+                    kind: ItemKind.lost,
+                    items: ownItems,
+                  ),
+                ],
+              );
+            },
+          ),
         ],
       ),
       ),
+    );
+  }
+}
+
+/// B4: admin-side mirror of the user profile's "Found" / "Lost" lists —
+/// a horizontally scrolling row of the admin's own reports of one kind with
+/// a live count in the header.
+class _AdminOwnItemsSection extends StatelessWidget {
+  const _AdminOwnItemsSection({
+    required this.title,
+    required this.kind,
+    required this.items,
+  });
+
+  final String title;
+  final ItemKind kind;
+  final List<LostFoundItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final own = items.where((i) => i.kind == kind).toList();
+    final accent = kind == ItemKind.lost ? AppColors.error : AppColors.success;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          child: Row(
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${own.length}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (own.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              'No ${title.toLowerCase()} reports yet.',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 200,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              itemCount: own.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final item = own[index];
+                return SizedBox(
+                  width: 150,
+                  child: ItemGridCard(
+                    item: item,
+                    heroTagPrefix: 'admin_profile_${kind.name}',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ItemDetailScreen(
+                            item: item,
+                            heroTagPrefix: 'admin_profile_${kind.name}',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }
