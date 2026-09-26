@@ -19,6 +19,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/confirm_sign_out_dialog.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/image_picker_sheet.dart';
 import '../widgets/item_grid_card.dart';
@@ -218,23 +219,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _confirmSignOut() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Log out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Log Out'),
-          ),
-        ],
-      ),
-    );
+    // C1: shared polished logout dialog (icon, hierarchy, rounded corners).
+    final confirmed = await showConfirmSignOutDialog(context);
     if (confirmed == true) {
       _signOut();
     }

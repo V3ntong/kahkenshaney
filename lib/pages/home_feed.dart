@@ -12,6 +12,7 @@ import '../screens/settings_screen.dart';
 import '../screens/user_reports_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/admin_invite_banner.dart';
+import '../widgets/confirm_sign_out_dialog.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/feature_card.dart';
 import '../widgets/greeting_header.dart';
@@ -171,23 +172,8 @@ class _HomeFeedState extends State<HomeFeed> {
   }
 
   Future<void> _confirmSignOut() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Log out'),
-        content: const Text('Are you sure you want to log out of KAH KEN SHA NEY?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Log Out'),
-          ),
-        ],
-      ),
-    );
+    // C1: shared polished logout dialog (icon, hierarchy, rounded corners).
+    final confirmed = await showConfirmSignOutDialog(context);
     if (confirmed == true) {
       widget.onSignOut?.call();
     }
