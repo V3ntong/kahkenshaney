@@ -324,19 +324,45 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
                 );
               }
 
-              return ListView.separated(
+              // B8: group the queue into nested "Found Review" and
+              // "Lost Review" sub-sections (still one Review Queue screen).
+              final children = <Widget>[];
+              void addSection(String title, ItemKind kind, Color color) {
+                final group =
+                    items.where((i) => i.kind == kind).toList();
+                if (group.isEmpty) return;
+                if (children.isNotEmpty) {
+                  children.add(const SizedBox(height: 20));
+                }
+                children.add(_QueueSectionHeader(
+                  title: title,
+                  count: group.length,
+                  color: color,
+                ));
+                children.add(const SizedBox(height: 12));
+                for (var i = 0; i < group.length; i++) {
+                  final item = group[i];
+                  children.add(Padding(
+                    padding: EdgeInsets.only(
+                      bottom: i == group.length - 1 ? 0 : 12,
+                    ),
+                    child: _ReviewCard(
+                      item: item,
+                      onTap: () => _showItemDetail(item),
+                      onApprove: () =>
+                          _updateModeration(item, ModerationStatus.approved),
+                      onReject: () => _showRejectDialog(item),
+                    ),
+                  ));
+                }
+              }
+
+              addSection('Found Review', ItemKind.found, AppColors.success);
+              addSection('Lost Review', ItemKind.lost, AppColors.error);
+
+              return ListView(
                 padding: const EdgeInsets.all(16),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return _ReviewCard(
-                    item: item,
-                    onTap: () => _showItemDetail(item),
-                    onApprove: () => _updateModeration(item, ModerationStatus.approved),
-                    onReject: () => _showRejectDialog(item),
-                  );
-                },
+                children: children,
               );
             },
           ),
@@ -361,6 +387,67 @@ class _AdminReviewQueueScreenState extends State<AdminReviewQueueScreen> {
 }
 
 // ── Review Card ───────────────────────────────────────────────────────────
+
+/// B8: sub-header that groups the review queue by lifecycle type.
+class _QueueSectionHeader extends StatelessWidget {
+  const _QueueSectionHeader({
+    required this.title,
+    required this.count,
+    required this.color,
+  });
+
+  final String title;
+  final int count;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            title.startsWith('Found')
+                ? Icons.inventory_2_rounded
+                : Icons.fmd_bad_rounded,
+            size: 17,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ReviewCard extends StatelessWidget {
   const _ReviewCard({
