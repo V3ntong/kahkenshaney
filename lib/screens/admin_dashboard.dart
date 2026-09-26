@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -19,6 +20,7 @@ import '../widgets/app_logo.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/image_picker_sheet.dart';
 import 'admin_inbox_screen.dart';
+import 'admin_items_list_screen.dart';
 import 'admin_resolved_screen.dart';
 import 'admin_review_queue_screen.dart';
 import 'auth/login.dart';
@@ -149,6 +151,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Navigator.of(context).maybePop();
   }
 
+  /// B1: overview cards navigate to the records behind their count —
+  /// Lost/Found push a filtered item list, Users/Pending switch the sidebar
+  /// section (they reuse the existing filtered admin views).
+  void _openOverviewCard(_OverviewTarget target) {
+    switch (target) {
+      case _OverviewTarget.lost:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AdminItemsListScreen(
+              kind: ItemKind.lost,
+              itemsStream: _itemsStream,
+            ),
+          ),
+        );
+      case _OverviewTarget.found:
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AdminItemsListScreen(
+              kind: ItemKind.found,
+              itemsStream: _itemsStream,
+            ),
+          ),
+        );
+      case _OverviewTarget.users:
+        _selectSection(4);
+      case _OverviewTarget.pending:
+        _selectSection(1);
+    }
+  }
+
   Future<void> _confirmSignOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -276,6 +310,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           usersStream: _usersStream,
           repositoryAvailable: _repository != null,
           onNotice: _showNotice,
+          onCardTap: _openOverviewCard,
         );
       case 1:
         return AdminReviewQueueScreen(adminUid: _auth.currentUser?.uid ?? '');
@@ -545,6 +580,10 @@ class _AvatarBadge extends StatelessWidget {
 
 // ── Dashboard overview ─────────────────────────────────────────────────────
 
+/// B1: which overview card was tapped — each maps to the admin view that
+/// lists the records behind that count.
+enum _OverviewTarget { lost, found, users, pending }
+
 class _DashboardOverview extends StatelessWidget {
   const _DashboardOverview({
     required this.adminName,
@@ -552,6 +591,7 @@ class _DashboardOverview extends StatelessWidget {
     required this.usersStream,
     required this.repositoryAvailable,
     required this.onNotice,
+    required this.onCardTap,
   });
 
   final String adminName;
@@ -559,6 +599,7 @@ class _DashboardOverview extends StatelessWidget {
   final Stream<int>? usersStream;
   final bool repositoryAvailable;
   final ValueChanged<String> onNotice;
+  final ValueChanged<_OverviewTarget> onCardTap;
 
   @override
   Widget build(BuildContext context) {
@@ -616,6 +657,8 @@ class _DashboardOverview extends StatelessWidget {
                                     color: AppColors.error,
                                     tint: AppColors.errorSurface,
                                     caption: 'total lost reports',
+                                    onTap: () =>
+                                        onCardTap(_OverviewTarget.lost),
                                   ),
                                 ),
                                 FadeSlideInWidget(
@@ -628,6 +671,8 @@ class _DashboardOverview extends StatelessWidget {
                                     color: AppColors.success,
                                     tint: AppColors.successSurface,
                                     caption: 'total found reports',
+                                    onTap: () =>
+                                        onCardTap(_OverviewTarget.found),
                                   ),
                                 ),
                                 FadeSlideInWidget(
@@ -640,6 +685,8 @@ class _DashboardOverview extends StatelessWidget {
                                     color: AppColors.primary,
                                     tint: AppColors.primarySurface,
                                     caption: 'registered accounts',
+                                    onTap: () =>
+                                        onCardTap(_OverviewTarget.users),
                                   ),
                                 ),
                                 FadeSlideInWidget(
@@ -652,6 +699,8 @@ class _DashboardOverview extends StatelessWidget {
                                     color: AppColors.warning,
                                     tint: AppColors.warningSurface,
                                     caption: 'awaiting review',
+                                    onTap: () =>
+                                        onCardTap(_OverviewTarget.pending),
                                   ),
                                 ),
                               ],
@@ -1047,6 +1096,7 @@ class _StatCard extends StatelessWidget {
     required this.color,
     required this.tint,
     required this.caption,
+    this.onTap,
   });
 
   final double width;
@@ -1057,9 +1107,13 @@ class _StatCard extends StatelessWidget {
   final Color tint;
   final String caption;
 
+  /// B1: makes the overview card tappable (navigates to the records behind
+  /// the count). When null the card renders as a plain container.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       width: width,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1112,6 +1166,17 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+
+    if (onTap == null) return card;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap!();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: card,
     );
   }
 }
