@@ -12,6 +12,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../data/firestore/admin_repository.dart';
 import '../mainpage.dart';
 import '../models/lost_found_item.dart';
+import '../pages/report_lost_page.dart';
+import '../pages/submit_found_page.dart';
 import '../services/admin_api.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
@@ -1977,6 +1979,30 @@ class _AdminActionsCard extends StatelessWidget {
       icon: Icons.admin_panel_settings_rounded,
       child: Column(
         children: [
+          // B2: admins file reports directly (items handed to staff in
+          // person). Both forms attribute the report to the signed-in admin
+          // account via their internal `_currentUid()`.
+          _ActionTile(
+            icon: Icons.fmd_bad_rounded,
+            color: AppColors.error,
+            title: 'Report Lost Item',
+            subtitle: 'File a lost report attributed to the admin account.',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReportLostPage()),
+            ),
+          ),
+          _ActionTile(
+            icon: Icons.inventory_2_rounded,
+            color: AppColors.success,
+            title: 'Report Found Item',
+            subtitle:
+                'File a found item handed directly to admin/staff.',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SubmitFoundPage()),
+            ),
+          ),
           _ActionTile(
             icon: Icons.verified_rounded,
             color: AppColors.success,
@@ -2019,12 +2045,17 @@ class _ActionTile extends StatelessWidget {
     required this.color,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   final IconData icon;
   final Color color;
   final String title;
   final String subtitle;
+
+  /// When set the tile performs this action; otherwise it keeps the legacy
+  /// "coming soon" placeholder behavior.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2034,9 +2065,10 @@ class _ActionTile extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title is coming soon.')),
-          ),
+          onTap: onTap ??
+              () => ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$title is coming soon.')),
+              ),
           borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: const EdgeInsets.all(12),
