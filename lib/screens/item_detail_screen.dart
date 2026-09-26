@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/firestore/item_repository.dart';
 import '../models/item_claim.dart';
 import '../models/lost_found_item.dart';
+import '../pages/submit_found_page.dart';
 import '../services/auth_service.dart' show FirebaseAuthService;
 import '../data/firestore/notification_service.dart';
 import '../services/claim_api.dart';
@@ -100,6 +101,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     // the synchronous email-only helper.
     final isAdmin = FirebaseAuthService().isAdminAuthenticated;
     final canContact =
+        currentUid != null &&
+        !isOwner &&
+        !item.status.isTerminal &&
+        item.ownerUid.isNotEmpty &&
+        item.ownerUid != 'anonymous';
+    // A5: "I Found This Item" shortcut — only on LOST items, for signed-in
+    // non-owners while the report is still active. Submits a pre-filled
+    // found report and opens the handoff chat with the lost reporter.
+    final canOfferFound =
+        isLost &&
         currentUid != null &&
         !isOwner &&
         !item.status.isTerminal &&
@@ -483,6 +494,35 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ],
 
+                  // A5: "I Found This Item" — pre-filled found report that
+                  // opens a peer chat with the lost reporter on submit.
+                  if (canOfferFound) ...[
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _openFoundShortcut,
+                        icon: const Icon(
+                          Icons.search_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('I Found This Item'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.success,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
                   // Contact Reporter button (non-owners)
                   if (canContact) ...[
                     const SizedBox(height: 28),
@@ -597,6 +637,52 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           adminUid: '',
           peerUid: item.ownerUid,
           peerName: item.title,
+        ),
+      ),
+    );
+  }
+
+  /// A5: opens the found-item form pre-filled with matching details from the
+  /// lost report (category, color/description, location).
+  void _openFoundShortcut() {
+    final lostItem = item;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SubmitFoundPage(
+          initialCategory: lostItem.category,
+          initialDescription:
+              lostItem.description.trim().isNotEmpty ? lostItem.description.trim() : null,
+          initialLocation:
+              (lostItem.location?.trim().isNotEmpty ?? false)
+                  ? lostItem.location!.trim()
+                  : null,
+          onItemCreated: (_) => _openHandoffChat(lostItem),
+        ),
+      ),
+    );
+  }
+
+  /// A5: after the found report is submitted, open the peer thread between
+  /// the finder (current user) and the lost reporter so both can coordinate
+  /// the handoff. Uses the same peer-chat path as "Contact Reporter" — no
+  /// separate moderation path is introduced.
+  void _openHandoffChat(LostFoundItem lostItem) {
+    if (!mounted) return;
+    final finderUid = FirebaseAuth.instance.currentUser?.uid;
+    if (finderUid == null) return;
+    final reporterUid =
+        lostItem.reportedBy.isNotEmpty ? lostItem.reportedBy : lostItem.ownerUid;
+    if (reporterUid.isEmpty || reporterUid == finderUid) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserChatScreen(
+          userId: finderUid,
+          adminUid: '',
+          peerUid: reporterUid,
+          peerName: lostItem.title,
         ),
       ),
     );

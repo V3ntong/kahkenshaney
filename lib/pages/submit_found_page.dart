@@ -18,12 +18,19 @@ import '../widgets/photo_upload_field.dart';
 ///
 /// Fields: Category, Color, Location Found, Date Found, Storage Location,
 /// Photos. Submits through [ItemRepository] and [StorageService] by default.
+///
+/// Supports the "I Found This Item" shortcut (A5) via [initialCategory] /
+/// [initialDescription] / [initialLocation] prefill and [onItemCreated].
 class SubmitFoundPage extends StatefulWidget {
   const SubmitFoundPage({
     super.key,
     this.repository,
     this.storageService,
     this.onSubmit,
+    this.initialCategory,
+    this.initialDescription,
+    this.initialLocation,
+    this.onItemCreated,
   });
 
   final ItemRepository? repository;
@@ -31,6 +38,17 @@ class SubmitFoundPage extends StatefulWidget {
 
   /// Overrides the default Firestore/Storage submission for tests.
   final Future<void> Function(LostFoundItem item, List<File> photos)? onSubmit;
+
+  /// Prefill defaults taken from the lost report being matched (A5).
+  final String? initialCategory;
+  final String? initialDescription;
+  final String? initialLocation;
+
+  /// Invoked with the persisted item after a successful submission — the
+  /// shortcut uses it to open the handoff chat with the lost reporter.
+  /// Called after this page has popped, so it must not rely on this page's
+  /// context.
+  final ValueChanged<LostFoundItem>? onItemCreated;
 
   @override
   State<SubmitFoundPage> createState() => _SubmitFoundPageState();
@@ -46,6 +64,25 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
   DateTime? _date;
   List<File> _photos = [];
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // A5 prefill: seed matching details from the lost report. Only known
+    // categories are applied so the dropdown never gets an invalid value.
+    final category = widget.initialCategory;
+    if (category != null && itemCategories.contains(category)) {
+      _category = category;
+    }
+    final description = widget.initialDescription;
+    if (description != null && description.trim().isNotEmpty) {
+      _colorController.text = description.trim();
+    }
+    final location = widget.initialLocation;
+    if (location != null && location.trim().isNotEmpty) {
+      _locationController.text = location.trim();
+    }
+  }
 
   @override
   void dispose() {
@@ -87,6 +124,7 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
         updatedAt: DateTime.now(),
       );
 
+      LostFoundItem saved = item;
       if (widget.onSubmit != null) {
         await widget.onSubmit!(item, _photos);
       } else {
@@ -101,22 +139,15 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
         );
         final urls = results.map((r) => r.url).toList();
         final primaryResult = results.isNotEmpty ? results.first : null;
-        await repository.addItem(
-          item.copyWith(
-            media: urls,
-            imageUrl: primaryResult?.url,
-            storagePath: primaryResult?.path,
-          ),
+        saved = item.copyWith(
+          media: urls,
+          imageUrl: primaryResult?.url,
+          storagePath: primaryResult?.path,
         );
+        await repository.addItem(saved);
 
         // Notify admin of new report
-        await NotificationService().notifyAdminNewReport(
-          item: item.copyWith(
-            media: urls,
-            imageUrl: primaryResult?.url,
-            storagePath: primaryResult?.path,
-          ),
-        );
+        await NotificationService().notifyAdminNewReport(item: saved);
       }
 
       if (!mounted) return;
@@ -126,7 +157,14 @@ class _SubmitFoundPageState extends State<SubmitFoundPage> {
       );
       // Delay navigation slightly so the overlay is visible before popping.
       await Future.delayed(const Duration(milliseconds: 1200));
-      if (mounted) Navigator.of(context).pop();
+      // Capture before popping: after `pop()` this State is disposed and its
+      // context is no longer usable. The callback runs against the CALLER's
+      // context (e.g. the item detail screen opening the handoff chat).
+      final onCreated = widget.onItemCreated;
+      if (mounted) {
+        Navigator.of(context).pop();
+        onCreated?.call(saved);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
