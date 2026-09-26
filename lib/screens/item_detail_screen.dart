@@ -221,28 +221,55 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   ),
                   const SizedBox(height: AppTokens.space10),
 
-                  // Info rows
-                  if (item.location != null && item.location!.isNotEmpty)
-                    _InfoRow(icon: Icons.place_outlined, label: item.location!),
-                  if (!isLost &&
-                      item.storageLocation != null &&
-                      item.storageLocation!.isNotEmpty)
-                    _InfoRow(
-                      icon: Icons.storefront_outlined,
-                      label: 'Stored at: ${item.storageLocation}',
+                  // C2: metadata grouped into one outlined card with
+                  // dividers (header + rows) instead of a flat list.
+                  if (item.location != null && item.location!.isNotEmpty ||
+                      !isLost &&
+                          item.storageLocation != null &&
+                          item.storageLocation!.isNotEmpty ||
+                      item.createdAt != null ||
+                      item.category != null && item.category!.isNotEmpty) ...[
+                    const Text(
+                      'DETAILS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textTertiary,
+                        letterSpacing: 1.1,
+                      ),
                     ),
-                  if (item.createdAt != null)
-                    _InfoRow(
-                      icon: Icons.schedule_rounded,
-                      label: _formatDate(item.createdAt!),
+                    const SizedBox(height: 8),
+                    _InfoSection(
+                      rows: [
+                        if (item.location != null && item.location!.isNotEmpty)
+                          _InfoRow(
+                            icon: Icons.place_outlined,
+                            label: item.location!,
+                            padding: EdgeInsets.zero,
+                          ),
+                        if (!isLost &&
+                            item.storageLocation != null &&
+                            item.storageLocation!.isNotEmpty)
+                          _InfoRow(
+                            icon: Icons.storefront_outlined,
+                            label: 'Stored at: ${item.storageLocation}',
+                            padding: EdgeInsets.zero,
+                          ),
+                        if (item.createdAt != null)
+                          _InfoRow(
+                            icon: Icons.schedule_rounded,
+                            label: _formatDate(item.createdAt!),
+                            padding: EdgeInsets.zero,
+                          ),
+                        if (item.category != null && item.category!.isNotEmpty)
+                          _InfoRow(
+                            icon: Icons.category_outlined,
+                            label: item.category!,
+                            padding: EdgeInsets.zero,
+                          ),
+                      ],
                     ),
-
-                  // Category row
-                  if (item.category != null && item.category!.isNotEmpty)
-                    _InfoRow(
-                      icon: Icons.category_outlined,
-                      label: item.category!,
-                    ),
+                  ],
 
                   const SizedBox(height: AppTokens.space20),
 
@@ -1213,16 +1240,55 @@ class _Placeholder extends StatelessWidget {
 
 // ─── Info Row ─────────────────────────────────────────────────────────────
 
+/// C2: outlined card that groups the metadata rows with dividers so they
+/// scan as one block instead of a flat list.
+class _InfoSection extends StatelessWidget {
+  const _InfoSection({required this.rows});
+
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, indent: 16, endIndent: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: rows[i],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.label});
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    this.padding = const EdgeInsets.only(bottom: 6),
+  });
 
   final IconData icon;
   final String label;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: padding,
       child: Row(
         children: [
           Icon(icon, size: 16, color: AppColors.textTertiary),
