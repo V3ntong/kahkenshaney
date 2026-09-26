@@ -130,37 +130,39 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
 
-    switch (result) {
-      case AuthSuccess():
-        // Remember this account on-device for the login switcher.
-        await _persistCurrentAccount();
-        if (!mounted) return;
-        await _auth.refreshAdminStatus();
-        if (!mounted) return;
-        final home = _auth.isAdminAuthenticated
-            ? AdminDashboardScreen(authService: widget.authService)
-            : DashboardScreen(authService: widget.authService);
-        Navigator.pushAndRemoveUntil(
-          context,
-          FadeThroughRoute(builder: (_) => home),
-          (route) => false,
-        );
-      case AuthFailure(:final message):
-        if (_isEmailNotFound(message)) {
-          await showAppDialog(
+switch (result) {
+        case AuthSuccess():
+          // Remember this account on-device for the login switcher.
+          await _persistCurrentAccount();
+          if (!mounted) return;
+          await _auth.refreshAdminStatus();
+          if (!mounted) return;
+          final home = _auth.isAdminAuthenticated
+              ? AdminDashboardScreen(authService: widget.authService)
+              : DashboardScreen(authService: widget.authService);
+          Navigator.pushAndRemoveUntil(
             context,
-            title: 'Email Not Found',
-            message:
-                'The email address you entered is not registered. Please check '
-                'your email or create an account.',
-            icon: Icons.mark_email_unread_outlined,
-            iconColor: AppColors.error,
+            FadeThroughRoute(builder: (_) => home),
+            (route) => false,
           );
-        } else {
-          setState(() => _error = message);
-        }
+        case AuthFailure(:final message):
+          if (_isEmailNotFound(message)) {
+            await showAppDialog(
+              context,
+              title: 'Email Not Found',
+              message:
+                  'The email address you entered is not registered. Please check '
+                  'your email or create an account.',
+              icon: Icons.mark_email_unread_outlined,
+              iconColor: AppColors.error,
+            );
+          } else {
+            setState(
+              () => _error = 'Hmm, that email or password doesn\'t match. Want to try again?',
+            );
+          }
+      }
     }
-  }
 
   void _goToForgotPassword() {
     Navigator.push(

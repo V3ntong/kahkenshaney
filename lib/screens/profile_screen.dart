@@ -74,8 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-/// Horizontally scrolling "Found" / "Lost" lists of the items the signed-in
-/// user personally submitted.
+/// Vertical list of "Found" / "Lost" items the signed-in user submitted.
 class _OwnItemsSection extends StatelessWidget {
   const _OwnItemsSection({required this.title, required this.kind});
 
@@ -107,36 +106,32 @@ class _OwnItemsSection extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              height: 200,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return SizedBox(
-                    width: 150,
-                    child: ItemGridCard(
-                      item: item,
-                      heroTagPrefix: 'profile_${kind.name}',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ItemDetailScreen(
-                              item: item,
-                              heroTagPrefix: 'profile_${kind.name}',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return ItemGridCard(
+                  item: item,
+                  heroTagPrefix: 'profile_${kind.name}',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItemDetailScreen(
+                          item: item,
+                          heroTagPrefix: 'profile_${kind.name}',
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
+            const SizedBox(height: 8),
           ],
         );
       },
