@@ -1,9 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/firestore/support_chat_service.dart';
 import '../models/support_chat.dart';
+import '../services/moderation_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_chat_detail_screen.dart';
+
+/// B5: per-thread moderation triage color used for the tile outline/tint —
+/// green = clean, amber = flagged (unreviewed report), red = violation
+/// (report already reviewed/adjudicated by an admin).
+enum _ThreadFlag { clean, flagged, violation }
 
 /// Admin inbox — lists all user chats sorted by lastMessageAt.
 ///
@@ -24,10 +32,52 @@ class AdminInboxScreen extends StatefulWidget {
 class _AdminInboxScreenState extends State<AdminInboxScreen> {
   late final SupportChatService _chatService;
 
+  /// B5: moderation outline state per chat user, derived live from the
+  /// existing `moderation_reports` collection (no new flags are written).
+  final Map<String, _ThreadFlag> _flags = {};
+  StreamSubscription<List<ContentReport>>? _reportsSub;
+
   @override
   void initState() {
     super.initState();
     _chatService = SupportChatService(adminUid: widget.adminUid);
+    try {
+      _reportsSub = ModerationService().streamReports().listen(
+        _applyReports,
+        onError: (_) {},
+      );
+    } catch (e) {
+      debugPrint('[AdminInbox] moderation stream error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _reportsSub?.cancel();
+    super.dispose();
+  }
+
+  /// Reduces all moderation reports to one flag per reported user:
+  /// no reports -> clean; only `pending` -> flagged; any `resolved`
+  /// (reviewed by an admin) -> violation.
+  void _applyReports(List<ContentReport> reports) {
+    final flags = <String, _ThreadFlag>{};
+    for (final report in reports) {
+      final uid = report.reportedUserId;
+      if (uid.isEmpty) continue;
+      if (report.status == 'resolved') {
+        flags[uid] = _ThreadFlag.violation;
+      } else if (report.status == 'pending' &&
+          flags[uid] != _ThreadFlag.violation) {
+        flags[uid] = _ThreadFlag.flagged;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _flags
+        ..clear()
+        ..addAll(flags);
+    });
   }
 
   void _openChat(SupportChat chat) {
@@ -98,6 +148,7 @@ class _AdminInboxScreenState extends State<AdminInboxScreen> {
               return _ChatTile(
                 chat: chat,
                 chatService: _chatService,
+                flag: _flags[chat.userId] ?? _ThreadFlag.clean,
                 onTap: () => _openChat(chat),
               );
             },
@@ -160,11 +211,15 @@ class _ChatTile extends StatefulWidget {
     required this.chat,
     required this.chatService,
     required this.onTap,
+    this.flag = _ThreadFlag.clean,
   });
 
   final SupportChat chat;
   final SupportChatService chatService;
   final VoidCallback onTap;
+
+  /// B5: moderation outline for this user's thread.
+  final _ThreadFlag flag;
 
   @override
   State<_ChatTile> createState() => _ChatTileState();
@@ -202,8 +257,27 @@ class _ChatTileState extends State<_ChatTile> {
         ? chat.lastMessage
         : 'No messages yet';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+    // B5: moderation triage outline + subtle tint per user thread. The
+    // decoration lives on the outer container (margin replaces the old
+    // padding) so the InkWell/Material ripple still fills the rounded shape.
+    final flagColor = switch (widget.flag) {
+      _ThreadFlag.clean => AppColors.success.withValues(alpha: 0.55),
+      _ThreadFlag.flagged => AppColors.warning,
+      _ThreadFlag.violation => AppColors.error,
+    };
+    final flagTint = switch (widget.flag) {
+      _ThreadFlag.clean => null,
+      _ThreadFlag.flagged => AppColors.warningSurface,
+      _ThreadFlag.violation => AppColors.errorSurface,
+    };
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      decoration: BoxDecoration(
+        color: flagTint,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: flagColor, width: 1.25),
+      ),
       child: Material(
         color: hasUnread
             ? AppColors.primarySurface.withValues(alpha: 0.75)
