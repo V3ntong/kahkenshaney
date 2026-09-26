@@ -3393,6 +3393,13 @@ class _SettingsSection extends StatefulWidget {
 class _SettingsSectionState extends State<_SettingsSection> {
   bool _migrating = false;
 
+  // B3: what this button actually does.
+  // Handler -> Cloud Function `migrateModerationStatus` (functions/src/index.ts):
+  // an admin-only, idempotent Firestore backfill that stamps
+  // `moderationStatus: 'approved'` onto every `items` document created before
+  // the moderation feature existed (documents that already have the field are
+  // skipped). It is a one-time migration by design but safe to re-run; whether
+  // to hide/remove it going forward is a call for the project owner.
   Future<void> _runMigration() async {
     setState(() => _migrating = true);
     try {
@@ -3460,11 +3467,46 @@ class _SettingsSectionState extends State<_SettingsSection> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tap once to add moderationStatus to all existing items.\nThis is safe to run multiple times.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              const SizedBox(height: 14),
+              // B3: plain-language description of the migration so future
+              // admins know what pressing the button does.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primarySurface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Backfills the moderationStatus field as "approved" on '
+                          'item reports created before moderation was added, so '
+                          'older reports show up correctly in review lists. '
+                          'Admin-only, only touches reports missing the field — '
+                          'safe to run more than once.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.45,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
