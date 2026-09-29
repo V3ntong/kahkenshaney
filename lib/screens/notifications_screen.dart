@@ -117,8 +117,6 @@ onContactAdmin: notif.type == 'status_resolved' ||
                             builder: (_) => UserChatScreen(
                               userId: widget.userId,
                               adminUid: '',
-                              peerUid: 'admin',
-                              peerName: 'Admin Support',
                               itemId: notif.relatedItemId,
                               itemTitle: notif.title,
                             ),

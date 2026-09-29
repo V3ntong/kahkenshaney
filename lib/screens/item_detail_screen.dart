@@ -692,15 +692,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     if (currentUid == null) return;
 
-    // Open admin support chat with item context
+    // Open the user's admin support thread, carrying the item it is about so
+    // both sides see the context (chat doc records itemId/itemTitle).
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => UserChatScreen(
           userId: currentUid,
-          adminUid: '', // Empty adminUid means it'll find/create admin chat
-          peerUid: 'admin',
-          peerName: 'Admin Support',
+          adminUid: '', // Resolved from Firestore when the chat opens
+          itemId: item.id,
+          itemTitle: item.title,
         ),
       ),
     );

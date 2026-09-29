@@ -57,7 +57,15 @@ class SupportChatService {
   ///
   /// If the document doesn't exist, it creates one with default values.
   /// Returns the chat ID (which is the userId).
-  Future<String> ensureChat(String userId) async {
+  ///
+  /// When [itemId]/[itemTitle] are provided (Contact Admin from an item), the
+  /// thread records them so the admin can see which report it is about. An
+  /// existing thread is only rewritten when the item context actually changed.
+  Future<String> ensureChat(
+    String userId, {
+    String? itemId,
+    String? itemTitle,
+  }) async {
     final doc = _chatDoc(userId);
     final snap = await doc.get();
     if (!snap.exists) {
@@ -69,7 +77,22 @@ class SupportChatService {
         'unreadByUser': false,
         'unreadByAdminCount': 0,
         'unreadByUserCount': 0,
+        if (itemId != null && itemId.isNotEmpty) 'itemId': itemId,
+        if (itemTitle != null && itemTitle.isNotEmpty) 'itemTitle': itemTitle,
       });
+      return userId;
+    }
+
+    final data = snap.data();
+    if (data != null && itemId != null && itemId.isNotEmpty) {
+      final changed = data['itemId'] != itemId ||
+          data['itemTitle'] != itemTitle;
+      if (changed) {
+        await doc.update({
+          'itemId': itemId,
+          if (itemTitle != null && itemTitle.isNotEmpty) 'itemTitle': itemTitle,
+        });
+      }
     }
     return userId;
   }

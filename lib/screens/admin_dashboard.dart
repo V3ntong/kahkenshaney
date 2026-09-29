@@ -1791,117 +1791,68 @@ class _ReportRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 160,
-            child: Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-          SizedBox(width: 72, child: _TypeBadge(kind: item.kind)),
-          SizedBox(
-            width: 96,
-            child: _StatusBadge(status: item.status),
-          ),
-          SizedBox(
-            width: 70,
-            child: Text(
-              date,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          TextButton(
-            onPressed: () => _showDetails(context, item),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              textStyle: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            child: const Text('View'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDetails(BuildContext context, LostFoundItem item) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(item.title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      // Whole row opens the full report (same destination as the View button).
+      onTap: () => _openItem(context),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
           children: [
-            _detailRow('Type', item.kind == ItemKind.lost ? 'Lost' : 'Found'),
-            _detailRow('Status', _statusLabel(item.status)),
-            _detailRow(
-              'Date',
-              item.createdAt == null
-                  ? '—'
-                  : '${_monthAbbr[item.createdAt!.month - 1]} ${item.createdAt!.day}, ${item.createdAt!.year}',
+            SizedBox(
+              width: 160,
+              child: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
             ),
-            if (item.location != null) _detailRow('Location', item.location!),
-            if (item.storageLocation != null)
-              _detailRow('Storage', item.storageLocation!),
-            if (item.description.isNotEmpty)
-              _detailRow('Details', item.description),
+            SizedBox(width: 72, child: _TypeBadge(kind: item.kind)),
+            SizedBox(
+              width: 96,
+              child: _StatusBadge(status: item.status),
+            ),
+            SizedBox(
+              width: 70,
+              child: Text(
+                date,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: () => _openItem(context),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                textStyle: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('View'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 72,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12.5,
-                color: AppColors.textTertiary,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
+  void _openItem(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ItemDetailScreen(
+          item: item,
+          heroTagPrefix: 'admin_recent',
+        ),
       ),
     );
   }

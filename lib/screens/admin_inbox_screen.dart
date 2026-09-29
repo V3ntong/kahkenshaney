@@ -341,6 +341,32 @@ class _ChatTileState extends State<_ChatTile> {
                         ],
                       ),
                       const SizedBox(height: 3),
+                      if (chat.itemTitle != null &&
+                          chat.itemTitle!.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.inventory_2_rounded,
+                              size: 12,
+                              color: AppColors.info,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Re: ${chat.itemTitle}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.info,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                      ],
                       Row(
                         children: [
                           Expanded(

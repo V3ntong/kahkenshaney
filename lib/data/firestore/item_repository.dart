@@ -252,18 +252,24 @@ class ItemRepository {
 
   /// All claims submitted on an item, newest first. Read-only for clients —
   /// claims are written exclusively by Cloud Functions.
-  Stream<List<ItemClaim>> streamItemClaims(String itemId) {
-    return _claims(itemId)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map(
-      (snap) => snap.docs
-          .map((doc) => ItemClaim.fromMap(doc.id, itemId, doc.data()))
-          .toList(),
-    ).handleError((error) {
+  ///
+  /// Errors are logged and then forwarded to the listener: swallowing them
+  /// would leave StreamBuilders waiting forever on a stream that never emits
+  /// (the old "claims spinner never stops" bug).
+  Stream<List<ItemClaim>> streamItemClaims(String itemId) async* {
+    try {
+      yield* _claims(itemId)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map(
+        (snap) => snap.docs
+            .map((doc) => ItemClaim.fromMap(doc.id, itemId, doc.data()))
+            .toList(),
+      );
+    } catch (error) {
       debugPrint('[ItemRepository] streamItemClaims error: $error');
-      return <ItemClaim>[];
-    });
+      rethrow;
+    }
   }
 
   /// The current user's claim on an item, or null when they have not

@@ -836,7 +836,7 @@ class _ItemDetailSheet extends StatelessWidget {
 /// Live list of every claim submitted on the item, each with an Approve
 /// action. Approving one claim rejects the others server-side and resolves
 /// the item.
-class _ClaimsSection extends StatelessWidget {
+class _ClaimsSection extends StatefulWidget {
   const _ClaimsSection({
     required this.itemId,
     required this.onApproveClaim,
@@ -846,16 +846,57 @@ class _ClaimsSection extends StatelessWidget {
   final void Function(ItemClaim claim) onApproveClaim;
 
   @override
-  Widget build(BuildContext context) {
-    final Stream<List<ItemClaim>> stream;
-    try {
-      stream = ItemRepository().streamItemClaims(itemId);
-    } catch (_) {
-      return const SizedBox.shrink();
+  State<_ClaimsSection> createState() => _ClaimsSectionState();
+}
+
+class _ClaimsSectionState extends State<_ClaimsSection> {
+  /// The stream is created once (not on every rebuild) so the StreamBuilder
+  /// keeps its subscription instead of restarting in `waiting` forever.
+  late Stream<List<ItemClaim>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = _createStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ClaimsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.itemId != widget.itemId) {
+      _stream = _createStream();
     }
+  }
+
+  Stream<List<ItemClaim>> _createStream() {
+    try {
+      return ItemRepository().streamItemClaims(widget.itemId);
+    } catch (_) {
+      // Firebase not initialised — resolve to an empty list so the section
+      // renders its "no claims" state instead of spinning.
+      return Stream<List<ItemClaim>>.value(const []);
+    }
+  }
+
+  void _retry() {
+    setState(() => _stream = _createStream());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<List<ItemClaim>>(
-      stream: stream,
+      stream: _stream,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _ClaimsMessage(
+            icon: Icons.cloud_off_rounded,
+            color: AppColors.error,
+            message: 'Could not load claims right now.',
+            actionLabel: 'Retry',
+            onAction: _retry,
+          );
+        }
+
         final claims = snapshot.data;
 
         return Column(
@@ -904,11 +945,74 @@ class _ClaimsSection extends StatelessWidget {
               for (final claim in claims)
                 _ClaimRow(
                   claim: claim,
-                  onApprove: () => onApproveClaim(claim),
+                  onApprove: () => widget.onApproveClaim(claim),
                 ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Empty/error placeholder used by the claims section.
+class _ClaimsMessage extends StatelessWidget {
+  const _ClaimsMessage({
+    required this.icon,
+    required this.color,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: color,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(actionLabel!),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

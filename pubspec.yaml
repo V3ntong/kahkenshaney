@@ -31,6 +31,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # Test-only: official Pigeon test harness used by test/widget_test.dart to
+  # mock Firebase core platform channels in widget tests.
+  firebase_core_platform_interface: ^8.1.1
+
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.13.1
   flutter_native_splash: ^2.4.0

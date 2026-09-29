@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/firestore/item_repository.dart';
 import '../data/firestore/support_chat_service.dart';
 import '../data/storage/chat_image_uploader.dart';
+import '../models/support_chat.dart';
 import '../models/support_message.dart';
+import 'item_detail_screen.dart';
 import '../theme/app_theme.dart';
 
 /// Admin chat detail screen — reuses the same message-bubble UI as the
@@ -187,6 +190,13 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
             )
           : Column(
         children: [
+          // ── Item context (which report this thread is about) ──
+          StreamBuilder<SupportChat?>(
+            stream: _chatService!.streamChat(widget.chatId),
+            builder: (context, snapshot) =>
+                _ItemContextBanner(chat: snapshot.data),
+          ),
+
           // ── Messages list ────────────────────────────────────
           Expanded(
             child: StreamBuilder<List<SupportMessage>>(
@@ -311,6 +321,112 @@ class _AdminChatDetailScreenState extends State<AdminChatDetailScreen> {
         ),
       ),
     );
+  }
+}
+
+// ── Item context banner ────────────────────────────────────────────────────
+
+/// Shows which reported item a support thread is about, so the admin can
+/// open the report without leaving the conversation.
+class _ItemContextBanner extends StatelessWidget {
+  const _ItemContextBanner({required this.chat});
+
+  final SupportChat? chat;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = chat?.itemTitle;
+    final itemId = chat?.itemId;
+    final canOpen = itemId != null && itemId.isNotEmpty;
+
+    if (title == null || title.isEmpty) return const SizedBox.shrink();
+
+    return Material(
+      color: AppColors.infoSurface,
+      child: InkWell(
+        onTap: canOpen ? () => _openItem(context, itemId) : null,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.inventory_2_rounded,
+                  size: 16,
+                  color: AppColors.info,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ABOUT ITEM',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.info,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (canOpen)
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: AppColors.info,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openItem(BuildContext context, String itemId) async {
+    try {
+      final item = await ItemRepository().getItem(itemId);
+      if (!context.mounted) return;
+      if (item == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This item is no longer available.')),
+        );
+        return;
+      }
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              ItemDetailScreen(item: item, heroTagPrefix: 'admin-chat'),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[AdminChatDetail] open item error: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open item details.')),
+      );
+    }
   }
 }
 

@@ -197,7 +197,11 @@ class _UserChatScreenState extends State<UserChatScreen> {
         final realAdminUid = await SupportChatService.lookupAdminUid(null);
         final adminUid = realAdminUid ?? widget.adminUid;
         final service = SupportChatService(adminUid: adminUid);
-        await service.ensureChat(widget.userId);
+        await service.ensureChat(
+          widget.userId,
+          itemId: widget.itemId,
+          itemTitle: widget.itemTitle,
+        );
         if (!mounted) return;
         setState(() {
           _chatService = service;
@@ -476,6 +480,8 @@ class _UserChatScreenState extends State<UserChatScreen> {
     final hasItemContext = _hasItemContext;
     final itemTitle = _itemTitle ?? 'Item';
     final itemId = _itemId;
+    final shortItemId =
+        itemId != null && itemId.length > 8 ? itemId.substring(0, 8) : itemId;
 
     return Center(
       child: Padding(
@@ -498,7 +504,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              hasItemContext ? 'Contact Admin about "$_itemTitle"' : (_isPeerChat ? 'Contact the reporter' : 'Start a conversation'),
+              hasItemContext ? 'Contact Admin about "$itemTitle"' : (_isPeerChat ? 'Contact the reporter' : 'Start a conversation'),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -508,7 +514,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
             const SizedBox(height: 8),
             Text(
               hasItemContext
-                  ? 'Send a message to admin about "$itemTitle" (ID: ${_itemId!.substring(0, 8)}...).'
+                  ? 'Send a message to admin about "$itemTitle" (ID: $shortItemId).'
                   : (_isPeerChat
                       ? 'Send a message to the person who reported this item.'
                       : 'Send a message to our support team. We\'re here to help!'),

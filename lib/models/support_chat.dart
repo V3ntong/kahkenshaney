@@ -14,6 +14,8 @@ class SupportChat {
     this.unreadByUser = false,
     this.unreadByAdminCount = 0,
     this.unreadByUserCount = 0,
+    this.itemId,
+    this.itemTitle,
   });
 
   final String id;
@@ -24,6 +26,11 @@ class SupportChat {
   final bool unreadByUser;
   final int unreadByAdminCount;
   final int unreadByUserCount;
+
+  /// Item the user most recently contacted support about, so the admin can
+  /// see which report the conversation refers to. Null for generic chats.
+  final String? itemId;
+  final String? itemTitle;
 
   /// The UID of the non-admin participant (the user).
   String get userId => id;
@@ -40,6 +47,8 @@ class SupportChat {
       unreadByUser: map['unreadByUser'] as bool? ?? false,
       unreadByAdminCount: (map['unreadByAdminCount'] as num?)?.toInt() ?? 0,
       unreadByUserCount: (map['unreadByUserCount'] as num?)?.toInt() ?? 0,
+      itemId: map['itemId'] as String?,
+      itemTitle: map['itemTitle'] as String?,
     );
   }
 
@@ -52,6 +61,8 @@ class SupportChat {
       'unreadByUser': unreadByUser,
       'unreadByAdminCount': unreadByAdminCount,
       'unreadByUserCount': unreadByUserCount,
+      'itemId': itemId,
+      'itemTitle': itemTitle,
     };
   }
 
