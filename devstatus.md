@@ -156,3 +156,96 @@ d18ec38 A2: My Reports stats use Pending card and open filtered report lists
 07d3a51 A6: ProfileProvider stream fix
 ... (earlier history)
 ```
+
+---
+---
+
+# Session Progress — 2026-09-30
+
+Safety snapshot for this session: `git stash create` → `82211120d5f039b38a45c61861d7e745c6f05b20`
+(no `git checkout` / `restore` / `reset`; no icon/splash assets touched; no test weakened or deleted).
+
+## Part 1 — Build & test recovery (project did not compile; 6 test files failed to load)
+
+**Root causes confirmed (both matched the earlier diagnosis):**
+
+1. `lib/screens/user_chat_screen.dart` — `class _UserChatScreenState` (line 45) was never closed. `build()`
+   ended ~line 539 and everything after it (`_MessageBubble`, `_FullScreenImage`, `_InputBar`,
+   `_FailedImageUpload`, `_FailedUploadBubble`) was parsed as nested members → "Classes can't be declared
+   inside other classes" plus ~84 cascade errors. The file also used `ItemDetailScreen` / `LostFoundItem`
+   without imports and a **fake item stub** (`LostFoundItem.fromMap(_itemId!, {...})`).
+2. `test/widget_test.dart` — four unbalanced `pumpWidget(` calls (one missing `)` each), wrong widget names
+   (`OTPInput` → real `OtpInput`, `PasswordStrength` → real `PasswordStrengthBar`), invalid `const` around
+   closures, and a reference to the library-private `_FirebaseErrorScreen`.
+
+**Fixes:** closed the state class; resolved imports; replaced the fake item stub with `_openItemDetails()`
+fetching the real item via `ItemRepository().getItem(itemId)`; rebuilt the two OTP tests, the
+password-strength test and the Firebase error test.
+
+**Extra finding (empirical, via a probe test):** unmocked Firebase platform channels **hang forever** in
+`flutter test` (they never error), so `AmongApp` sits on `_NativeSplashPlaceholder` and the old
+error-screen test could never pass as written. Solved with the official Pigeon harness
+(`firebase_core_platform_interface/test.dart`): an **echo** core host API (`initializeCore` → `[]`,
+`initializeApp` echoes the requested options so `MethodChannelFirebase`'s soft options check passes) plus a
+scoped mock for the App Check `activate` channel. Mock registration is scoped to the landing group via
+`setUp`/`tearDown`, so the "Firebase unavailable" placeholder test still exercises the real path.
+
+**Result:** `flutter analyze` → *No issues found!*; `flutter test` → **+138: All tests passed!**;
+`flutter build apk --debug` → ✓ `app-debug.apk`.
+
+## Part 2 — Device-issue audit (root causes located, pre-test evidence captured)
+
+| Issue | Verdict | Root cause (file:line) |
+|-------|---------|--------------------------|
+| Profile body blank | **earlier fix present, unverified** | `ItemGridCard` uses `Expanded` (`item_grid_card.dart:103`) inside a `Column`; in a shrink-wrapped list the height is unbounded → `RenderFlex … incoming height constraints are unbounded` → `child.hasSize` assertion blanks the body. Fix present at `profile_screen.dart:129` (`SizedBox(height: 240)`) + passing `test/profile_screen_test.dart` |
+| "Lost Items" spins forever | **fixed in Part 3** | spinner on `waiting && !hasData` with **no timeout** and **no Retry** (`admin_items_list_screen.dart:70`), plus `item_repository.dart` swallows every stream error via `.handleError(…) → <empty list>` (67-72, 109-112, 125-128, 140-143, 157-160, 177-180, 201-204, 237-240) so failures look like "no data" |
+| Review-queue badge mismatch | **earlier work present, untested** | badge unified on `ItemRepository().streamPendingItems()` (`moderationStatus == 'pending'`, `admin_dashboard.dart:98-106`), `99+` at `:657`; nothing proves approved "Submitted" items are excluded, nor last-item removal |
+| Claims card on undecided items | **partial** | `"Could not load claims right now."` at `admin_review_queue_screen.dart:894`, "Update Status" at `:766`; approval gate not applied. `streamItemClaims` does rethrow now (`item_repository.dart:259-273`) |
+| Reporter username missing | **already exists** | `item_detail_screen.dart:1460`, `admin_review_queue_screen.dart:742` — both use the denormalized `item.reporterUsername` |
+| Lost Reports 9.5 px overflow | **fixed in Part 3** | `StatusTrackerWidget._buildCompact` put `Text(currentStatus.label)` in a `Row(mainAxisSize: min)` with no `Flexible`/ellipsis (`status_tracker_widget.dart:186-201`), rendered inside `Expanded` by `_ReportCard` (`user_reports_screen.dart:241`) |
+| Notification long-press | **never implemented** | grep for `onLongPress|CupertinoContextMenu|showGeneralDialog` in `lib/` matches only image long-press (`user_chat_screen.dart:628`, `admin_chat_detail_screen.dart:488`); body is 2-line ellipsized text (`notifications_screen.dart:280-289`) |
+
+**Pre-test evidence (captured before fixing: 10 failures / 3 passes):**
+`RenderFlex overflowed by 56 / 133 / 16 / 93 / 271 pixels on the right`; `Found 0 widgets with text "Retry"`;
+`Found 1 CircularProgressIndicator` after 11 s on a never-emitting stream; Lost Reports re-subscribing its
+stream on every build.
+
+## Part 3 (most recent work) — Overflow + endless-spinner fixes
+
+**Files changed**
+
+| File | Change | Why |
+|------|--------|-----|
+| `lib/widgets/async_state_view.dart` **(new)** | `AsyncStateView<T>`: waiting spinner with a **10 s budget** → error state, `debugPrint` of the raw error + friendly message + **Retry** (re-subscribes), explicit **empty** state, then data | one shared four-state view; a spinner is never the fallback for "no data"/"error" |
+| `lib/widgets/status_tracker_widget.dart` | chip labels wrapped in `Flexible` + `maxLines: 1` + `TextOverflow.ellipsis` (normal **and** "Rejected" variants) | fixes the 9.5 px overflow for Lost **and** Found (shared widget) |
+| `lib/screens/admin_items_list_screen.dart` | `StreamBuilder` → `AsyncStateView` | timeout / error+Retry / empty / data |
+| `lib/screens/user_reports_screen.dart` | stream created **once in `initState`** (was built inside `build`, re-subscribing every rebuild) + `AsyncStateView` | removed the resubscribe loop, added the four states |
+| `test/async_state_and_cards_test.dart` **(new, 13 tests)** | 6 overflow configs (320/360 dp × scale 1.0/1.3/2.0) + Lost Items and Lost Reports four states incl. error and never-emitting streams, plus a `listenCount == 1` guard | pre-test first, then regression guard |
+
+`item_repository.dart` error swallowing was deliberately **left as-is** (changing it would alter behaviour of
+~8 other screens) — the screens now handle timeout/error/empty themselves. Flagged as follow-up.
+
+**Verification on the final tree:** `dart format` (5 files) → `flutter pub get` (no new packages) →
+`flutter analyze` **No issues found!** → `flutter test` **+153: All tests passed!** (was +140; +13 new; the
+new file alone runs `+13`) → `flutter build apk --debug` ✓ `app-debug.apk`. No device/emulator was available,
+so nothing was device-verified.
+
+## Still open
+
+1. Profile: All/Found/Lost filter, explicit loading/error state, counters-vs-listed-items test.
+2. Review Queue: badge↔queue parity test, empty state, last-item removal, in-flight button locking.
+3. Claims / Update Status gating matrix in the shared detail sheet (`admin_review_queue_screen.dart:766/894`).
+4. Notification long-press full-text preview (+ "More" affordance, actions, Semantics).
+5. Chat: persist the item link as an `item` message with a denormalized snapshot, batched link+text write,
+   day separators; fix the "Contact Admin" call site that passes the notification title/ID.
+6. Reports "last 7 days" filter (`admin_dashboard.dart:4200`) — not yet inspected, so it is unverified
+   whether "no reports" is a real bug.
+7. Dashboard item cards: whole-card tap target + description preview on the card / full description in the sheet.
+8. `item_repository.dart` — stop swallowing stream errors (cross-screen impact).
+
+## Notes / risks
+
+- A second agent (`opencode`, committing as `melben` with messages like `fsdfsd`) edits and commits the same
+  tree; it committed work mid-session (HEAD reached `a0d60e5`). Serialize access to avoid overwrites.
+- `flutter build apk --debug` prints only the pre-existing Kotlin/Gradle (KGP) deprecation warning.
+

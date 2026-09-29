@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import '../widgets/async_state_view.dart';
 import '../widgets/status_badge.dart';
 import 'item_detail_screen.dart';
 
@@ -42,8 +43,8 @@ class _AdminItemsListScreenState extends State<AdminItemsListScreen> {
     _stream = widget.itemsStream;
     if (_stream == null) {
       try {
-        _stream =
-            (widget.repository ?? ItemRepository()).streamAllItemsForAdmin();
+        _stream = (widget.repository ?? ItemRepository())
+            .streamAllItemsForAdmin();
       } catch (_) {
         _streamUnavailable = true;
       }
@@ -64,39 +65,20 @@ class _AdminItemsListScreenState extends State<AdminItemsListScreen> {
               title: 'Live data unavailable',
               message: 'Item records could not be loaded right now.',
             )
-          : StreamBuilder<List<LostFoundItem>>(
-              stream: _stream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    !snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  );
-                }
-
-                if (snapshot.hasError) {
-                  return _ListMessage(
-                    icon: Icons.cloud_off_rounded,
-                    title: 'Could not load reports',
-                    message: snapshot.error.toString(),
-                  );
-                }
-
-                final items = (snapshot.data ?? const <LostFoundItem>[])
+          : AsyncStateView<List<LostFoundItem>>(
+              stream: _stream!,
+              isEmpty: (all) => !all.any((i) => i.kind == widget.kind),
+              emptyIcon: isLost
+                  ? Icons.fmd_bad_rounded
+                  : Icons.inventory_2_rounded,
+              emptyTitle: 'No $title yet',
+              emptyMessage:
+                  'New ${isLost ? 'lost' : 'found'} reports will appear here.',
+              errorTitle: 'Could not load reports',
+              builder: (context, all) {
+                final items = all
                     .where((item) => item.kind == widget.kind)
                     .toList();
-
-                if (items.isEmpty) {
-                  return _ListMessage(
-                    icon: isLost
-                        ? Icons.fmd_bad_rounded
-                        : Icons.inventory_2_rounded,
-                    title: 'No $title yet',
-                    message: 'New ${isLost ? 'lost' : 'found'} reports will '
-                        'appear here.',
-                  );
-                }
-
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: items.length,
@@ -126,10 +108,8 @@ class _AdminItemRow extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ItemDetailScreen(
-              item: item,
-              heroTagPrefix: 'admin-list',
-            ),
+            builder: (_) =>
+                ItemDetailScreen(item: item, heroTagPrefix: 'admin-list'),
           ),
         );
       },
@@ -179,8 +159,7 @@ class _AdminItemRow extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     [
-                      if (item.location != null &&
-                          item.location!.isNotEmpty)
+                      if (item.location != null && item.location!.isNotEmpty)
                         item.location!,
                       if (createdAt != null)
                         '${createdAt.toLocal().day}/${createdAt.toLocal().month}/${createdAt.toLocal().year}',

@@ -91,9 +91,10 @@ class StatusTrackerWidget extends StatelessWidget {
   /// Rejected items show a special rejected state (index = -1).
   int _calculateCurrentIndex() {
     // Check if item was rejected (moderation rejected)
-    final hasRejection = statusHistory.any((e) =>
-        e.status == ModerationStatus.rejected.name ||
-        e.status == 'rejected');
+    final hasRejection = statusHistory.any(
+      (e) =>
+          e.status == ModerationStatus.rejected.name || e.status == 'rejected',
+    );
     if (hasRejection) return -1;
 
     if (statusHistory.isEmpty) {
@@ -158,12 +159,16 @@ class StatusTrackerWidget extends StatelessWidget {
           children: [
             const Icon(Icons.cancel_rounded, size: 14, color: AppColors.error),
             const SizedBox(width: AppTokens.space6),
-            Text(
-              'Rejected',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.error,
+            Flexible(
+              child: Text(
+                'Rejected',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.error,
+                ),
               ),
             ),
           ],
@@ -188,12 +193,18 @@ class StatusTrackerWidget extends StatelessWidget {
         children: [
           Icon(_icons[currentIndex], size: 14, color: fg),
           const SizedBox(width: AppTokens.space6),
-          Text(
-            currentStatus.label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: fg,
+          // Flexible keeps the chip inside narrow cards (report rows) and at
+          // large text scales instead of overflowing the parent Row.
+          Flexible(
+            child: Text(
+              currentStatus.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: fg,
+              ),
             ),
           ),
         ],
@@ -219,10 +230,7 @@ class StatusTrackerWidget extends StatelessWidget {
                 Container(
                   width: 6,
                   height: 6,
-                  decoration: BoxDecoration(
-                    color: fg,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: AppTokens.space8),
                 Text(
@@ -253,8 +261,18 @@ class StatusTrackerWidget extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
@@ -345,18 +363,14 @@ class _StepNode extends StatelessWidget {
                     color: isDone
                         ? AppColors.success
                         : isCurrent
-                            ? AppColors.primary
-                            : isRejected
-                                ? AppColors.error.withValues(alpha: 0.5)
-                                : AppColors.cardBorder,
+                        ? AppColors.primary
+                        : isRejected
+                        ? AppColors.error.withValues(alpha: 0.5)
+                        : AppColors.cardBorder,
                     width: isCurrent || isDone ? 2 : 1.5,
                   ),
                 ),
-                child: Icon(
-                  displayIcon,
-                  size: 18,
-                  color: iconColor,
-                ),
+                child: Icon(displayIcon, size: 18, color: iconColor),
               ),
               // Pulse animation for current step
               if (isCurrent)
@@ -397,7 +411,9 @@ class _StepNode extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.errorSurface,
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppColors.error.withValues(alpha: 0.3),
+                ),
               ),
               child: const Text(
                 'Rejected',

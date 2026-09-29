@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/firestore/item_repository.dart';
 import '../models/lost_found_item.dart';
 import '../theme/app_theme.dart';
+import '../widgets/async_state_view.dart';
 import '../widgets/status_tracker_widget.dart';
 
 /// Which slice of the user's reports a [UserReportsScreen] should show.
@@ -10,13 +11,13 @@ enum ReportsFilter { all, pending, lost, found, resolved, rejected }
 
 extension ReportsFilterX on ReportsFilter {
   String get title => switch (this) {
-        ReportsFilter.all => 'My Reports',
-        ReportsFilter.pending => 'Pending Reports',
-        ReportsFilter.lost => 'Lost Reports',
-        ReportsFilter.found => 'Found Reports',
-        ReportsFilter.resolved => 'Resolved Reports',
-        ReportsFilter.rejected => 'Rejected Reports',
-      };
+    ReportsFilter.all => 'My Reports',
+    ReportsFilter.pending => 'Pending Reports',
+    ReportsFilter.lost => 'Lost Reports',
+    ReportsFilter.found => 'Found Reports',
+    ReportsFilter.resolved => 'Resolved Reports',
+    ReportsFilter.rejected => 'Rejected Reports',
+  };
 
   /// Applies this filter to the raw list of the user's own items.
   ///
@@ -27,30 +28,35 @@ extension ReportsFilterX on ReportsFilter {
   /// - Resolved = status is terminal (claimed, resolved, closed)
   /// - Rejected = moderationStatus == rejected (excluded from main tiles but reachable)
   List<LostFoundItem> apply(List<LostFoundItem> items) => switch (this) {
-        ReportsFilter.all => items,
-        ReportsFilter.pending =>
-          items.where((i) => i.moderationStatus == ModerationStatus.pending).toList(),
-        ReportsFilter.lost =>
-          items
-              .where((i) =>
-                  i.moderationStatus == ModerationStatus.approved &&
-                  i.kind == ItemKind.lost &&
-                  !i.status.isTerminal)
-              .toList(),
-        ReportsFilter.found =>
-          items
-              .where((i) =>
-                  i.moderationStatus == ModerationStatus.approved &&
-                  i.kind == ItemKind.found &&
-                  !i.status.isTerminal)
-              .toList(),
-        ReportsFilter.resolved =>
-          items.where((i) => i.status.isTerminal).toList(),
-        ReportsFilter.rejected =>
-          items
-              .where((i) => i.moderationStatus == ModerationStatus.rejected)
-              .toList(),
-      };
+    ReportsFilter.all => items,
+    ReportsFilter.pending =>
+      items
+          .where((i) => i.moderationStatus == ModerationStatus.pending)
+          .toList(),
+    ReportsFilter.lost =>
+      items
+          .where(
+            (i) =>
+                i.moderationStatus == ModerationStatus.approved &&
+                i.kind == ItemKind.lost &&
+                !i.status.isTerminal,
+          )
+          .toList(),
+    ReportsFilter.found =>
+      items
+          .where(
+            (i) =>
+                i.moderationStatus == ModerationStatus.approved &&
+                i.kind == ItemKind.found &&
+                !i.status.isTerminal,
+          )
+          .toList(),
+    ReportsFilter.resolved => items.where((i) => i.status.isTerminal).toList(),
+    ReportsFilter.rejected =>
+      items
+          .where((i) => i.moderationStatus == ModerationStatus.rejected)
+          .toList(),
+  };
 }
 
 /// User's "My Reports" screen — shows all items they submitted
@@ -76,10 +82,15 @@ class UserReportsScreen extends StatefulWidget {
 class _UserReportsScreenState extends State<UserReportsScreen> {
   late final ItemRepository _repo;
 
+  /// Created once: building it inside `build` re-subscribed the StreamBuilder
+  /// on every rebuild (new stream instance each frame).
+  late final Stream<List<LostFoundItem>> _itemsStream;
+
   @override
   void initState() {
     super.initState();
     _repo = widget.repository ?? ItemRepository();
+    _itemsStream = _repo.streamUserItems(widget.ownerUid);
   }
 
   void _showItemDetail(LostFoundItem item) {
@@ -98,69 +109,25 @@ class _UserReportsScreenState extends State<UserReportsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(widget.filter == ReportsFilter.all ? 'My Reports' : widget.filter.title),
+        title: Text(
+          widget.filter == ReportsFilter.all
+              ? 'My Reports'
+              : widget.filter.title,
+        ),
       ),
-      body: StreamBuilder<List<LostFoundItem>>(
-        stream: _repo.streamUserItems(widget.ownerUid),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.cloud_off_rounded, size: 44, color: AppColors.error),
-                  const SizedBox(height: 16),
-                  Text(
-                    snapshot.error.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final items = widget.filter.apply(snapshot.data ?? const <LostFoundItem>[]);
-
-          if (items.isEmpty) {
-            final filtered = widget.filter != ReportsFilter.all;
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: const BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.receipt_long_rounded, size: 36, color: AppColors.textTertiary),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    filtered ? 'Nothing here yet' : 'No reports yet',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    filtered
-                        ? '${widget.filter.title} will appear here.'
-                        : 'Items you report will appear here.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            );
-          }
-
+      body: AsyncStateView<List<LostFoundItem>>(
+        stream: _itemsStream,
+        errorTitle: 'Could not load your reports',
+        isEmpty: (all) => widget.filter.apply(all).isEmpty,
+        emptyIcon: Icons.receipt_long_rounded,
+        emptyTitle: widget.filter == ReportsFilter.all
+            ? 'No reports yet'
+            : 'Nothing here yet',
+        emptyMessage: widget.filter == ReportsFilter.all
+            ? 'Items you report will appear here.'
+            : '${widget.filter.title} will appear here.',
+        builder: (context, data) {
+          final items = widget.filter.apply(data);
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: items.length,
@@ -215,7 +182,9 @@ class _ReportCard extends StatelessWidget {
                     : Container(
                         color: accent.withValues(alpha: 0.1),
                         child: Icon(
-                          isLost ? Icons.fmd_bad_rounded : Icons.inventory_2_rounded,
+                          isLost
+                              ? Icons.fmd_bad_rounded
+                              : Icons.inventory_2_rounded,
                           color: accent,
                           size: 24,
                         ),
@@ -278,7 +247,11 @@ class _ModerationBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -342,7 +315,11 @@ class _ItemDetailSheet extends StatelessWidget {
                   Expanded(
                     child: Text(
                       item.title,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                   _ModerationBadge(status: item.moderationStatus),
@@ -357,29 +334,56 @@ class _ItemDetailSheet extends StatelessWidget {
                 ),
                 child: Text(
                   isLost ? 'LOST' : 'FOUND',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: accent),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: accent,
+                  ),
                 ),
               ),
 
               if (item.description.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text(item.description, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                Text(
+                  item.description,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
               ],
 
               if (item.location != null && item.location!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Icon(Icons.place_outlined, size: 16, color: AppColors.textTertiary),
+                    const Icon(
+                      Icons.place_outlined,
+                      size: 16,
+                      color: AppColors.textTertiary,
+                    ),
                     const SizedBox(width: 6),
-                    Text(item.location!, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    Text(
+                      item.location!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ],
                 ),
               ],
 
               // Status Tracker
               const SizedBox(height: 20),
-              const Text('Status Tracker', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const Text(
+                'Status Tracker',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
               const SizedBox(height: 8),
               StatusTrackerWidget(
                 currentStatus: item.status,
