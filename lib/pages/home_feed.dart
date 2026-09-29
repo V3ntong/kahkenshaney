@@ -444,14 +444,25 @@ class _MyReportsStats extends StatelessWidget {
       stream: stream,
       builder: (context, snapshot) {
         final items = snapshot.data ?? const <LostFoundItem>[];
-        final approved = items.where((i) => i.moderationStatus == ModerationStatus.approved).toList();
-        final total = approved.length;
-        // "Pending" = every report that has not reached a terminal lifecycle
-        // state (claimed / resolved / archived).
-        final pending = approved.where((i) => !i.status.isTerminal).length;
-        final lost = approved.where((i) => i.kind == ItemKind.lost).length;
-        final found = approved.where((i) => i.kind == ItemKind.found).length;
-        final resolved = approved.where((i) => i.status.isTerminal).length;
+
+        // Single source of truth for counts (must match ReportsFilter.apply)
+        final pending = items
+            .where((i) => i.moderationStatus == ModerationStatus.pending)
+            .length;
+        final lost = items
+            .where((i) =>
+                i.moderationStatus == ModerationStatus.approved &&
+                i.kind == ItemKind.lost &&
+                !i.status.isTerminal)
+            .length;
+        final found = items
+            .where((i) =>
+                i.moderationStatus == ModerationStatus.approved &&
+                i.kind == ItemKind.found &&
+                !i.status.isTerminal)
+            .length;
+        final resolved = items.where((i) => i.status.isTerminal).length;
+        final total = pending + lost + found + resolved;
 
         if (total == 0) return const SizedBox.shrink();
 

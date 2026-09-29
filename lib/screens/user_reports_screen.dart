@@ -6,7 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/status_tracker_widget.dart';
 
 /// Which slice of the user's reports a [UserReportsScreen] should show.
-enum ReportsFilter { all, pending, lost, found, resolved }
+enum ReportsFilter { all, pending, lost, found, resolved, rejected }
 
 extension ReportsFilterX on ReportsFilter {
   String get title => switch (this) {
@@ -15,19 +15,41 @@ extension ReportsFilterX on ReportsFilter {
         ReportsFilter.lost => 'Lost Reports',
         ReportsFilter.found => 'Found Reports',
         ReportsFilter.resolved => 'Resolved Reports',
+        ReportsFilter.rejected => 'Rejected Reports',
       };
 
   /// Applies this filter to the raw list of the user's own items.
+  ///
+  /// Definitions (single source of truth):
+  /// - Pending = moderationStatus == pending (awaiting admin moderation)
+  /// - Lost = moderationStatus == approved AND kind == lost AND status not terminal
+  /// - Found = moderationStatus == approved AND kind == found AND status not terminal
+  /// - Resolved = status is terminal (claimed, resolved, closed)
+  /// - Rejected = moderationStatus == rejected (excluded from main tiles but reachable)
   List<LostFoundItem> apply(List<LostFoundItem> items) => switch (this) {
         ReportsFilter.all => items,
         ReportsFilter.pending =>
-          items.where((i) => !i.status.isTerminal).toList(),
+          items.where((i) => i.moderationStatus == ModerationStatus.pending).toList(),
         ReportsFilter.lost =>
-          items.where((i) => i.kind == ItemKind.lost).toList(),
+          items
+              .where((i) =>
+                  i.moderationStatus == ModerationStatus.approved &&
+                  i.kind == ItemKind.lost &&
+                  !i.status.isTerminal)
+              .toList(),
         ReportsFilter.found =>
-          items.where((i) => i.kind == ItemKind.found).toList(),
+          items
+              .where((i) =>
+                  i.moderationStatus == ModerationStatus.approved &&
+                  i.kind == ItemKind.found &&
+                  !i.status.isTerminal)
+              .toList(),
         ReportsFilter.resolved =>
           items.where((i) => i.status.isTerminal).toList(),
+        ReportsFilter.rejected =>
+          items
+              .where((i) => i.moderationStatus == ModerationStatus.rejected)
+              .toList(),
       };
 }
 

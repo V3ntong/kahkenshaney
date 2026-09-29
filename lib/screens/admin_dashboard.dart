@@ -983,7 +983,8 @@ class _DashboardData {
       } else {
         found++;
       }
-      if (item.status == ItemStatus.open) pending++;
+      // Pending = items awaiting admin moderation (moderationStatus == pending)
+      if (item.moderationStatus == ModerationStatus.pending) pending++;
     }
 
     final recent = items.take(6).toList();
