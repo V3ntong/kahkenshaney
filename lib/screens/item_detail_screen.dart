@@ -550,31 +550,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ],
 
-                  // Contact Reporter button (non-owners)
+                  // Reporter info + Contact/Message button (non-owners)
                   if (canContact) ...[
                     const SizedBox(height: 28),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _contactReporter(context),
-                        icon: const Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          size: 18,
-                        ),
-                        label: const Text('Contact Reporter'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+                    _ReporterInfoCard(
+                      reporterName: item.reporterUsername ?? 'Reporter',
+                      reporterPhotoUrl: item.reporterPhotoUrl,
+                      onMessage: () => _contactReporter(context),
                     ),
                   ],
 
@@ -656,14 +638,23 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     if (currentUid == null) return;
 
+    // Use reportedBy (original reporter) for DM, fallback to ownerUid
+    final reporterUid = item.reportedBy.isNotEmpty ? item.reportedBy : item.ownerUid;
+    if (reporterUid.isEmpty || reporterUid == currentUid) return;
+
+    // Use reporter's username for the chat title if available
+    final peerName = item.reporterUsername?.isNotEmpty == true
+        ? item.reporterUsername!
+        : item.title;
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => UserChatScreen(
           userId: currentUid,
           adminUid: '',
-          peerUid: item.ownerUid,
-          peerName: item.title,
+          peerUid: reporterUid,
+          peerName: peerName,
         ),
       ),
     );

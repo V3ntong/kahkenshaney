@@ -180,6 +180,8 @@ class LostFoundItem {
     required this.description,
     required this.ownerUid,
     this.reportedBy = '',
+    this.reporterUsername,
+    this.reporterPhotoUrl,
     this.category,
     this.location,
     this.storageLocation,
@@ -211,6 +213,13 @@ class LostFoundItem {
   /// The UID of the user who originally reported the item. Set at creation
   /// time and enforced by Firestore rules + the server-side claim check.
   final String reportedBy;
+
+  /// Denormalized reporter username for display (set at creation, updated on rename).
+  final String? reporterUsername;
+
+  /// Denormalized reporter photo URL for display.
+  final String? reporterPhotoUrl;
+
   final String? category;
   final String? location;
   final String? storageLocation;
@@ -300,6 +309,8 @@ class LostFoundItem {
     String? pickupLocation,
     List<ItemMatchScore>? matchScores,
     DateTime? eventDate,
+    String? reporterUsername,
+    String? reporterPhotoUrl,
   }) {
     return LostFoundItem(
       id: id,
@@ -308,6 +319,8 @@ class LostFoundItem {
       description: description ?? this.description,
       ownerUid: ownerUid,
       reportedBy: reportedBy,
+      reporterUsername: reporterUsername ?? this.reporterUsername,
+      reporterPhotoUrl: reporterPhotoUrl ?? this.reporterPhotoUrl,
       category: category ?? this.category,
       location: location ?? this.location,
       storageLocation: storageLocation ?? this.storageLocation,
@@ -331,7 +344,7 @@ class LostFoundItem {
     );
   }
 
-  factory LostFoundItem.fromMap(String id, Map<String, dynamic> map) {
+factory LostFoundItem.fromMap(String id, Map<String, dynamic> map) {
     return LostFoundItem(
       id: id,
       kind: ItemKindX.fromFirestore(map['kind'] as String?),
@@ -339,6 +352,8 @@ class LostFoundItem {
       description: (map['description'] as String?) ?? '',
       ownerUid: (map['ownerUid'] as String?) ?? '',
       reportedBy: (map['reportedBy'] as String?) ?? '',
+      reporterUsername: map['reporterUsername'] as String?,
+      reporterPhotoUrl: map['reporterPhotoUrl'] as String?,
       category: map['category'] as String?,
       location: map['location'] as String?,
       storageLocation: map['storageLocation'] as String?,
@@ -376,6 +391,8 @@ class LostFoundItem {
       'description': description,
       'ownerUid': ownerUid,
       'reportedBy': reportedBy,
+      'reporterUsername': reporterUsername,
+      'reporterPhotoUrl': reporterPhotoUrl,
       'category': category,
       'location': location,
       'storageLocation': storageLocation,
@@ -393,7 +410,7 @@ class LostFoundItem {
       'pickupDateTime': pickupDateTime,
       'pickupLocation': pickupLocation,
       'matchScores': matchScores.map((e) => e.toMap()).toList(),
-'eventDate': eventDate,
+      'eventDate': eventDate,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
