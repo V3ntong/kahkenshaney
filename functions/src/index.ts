@@ -17,7 +17,7 @@ import {
   validateMatchConfirm,
   validateResolve,
 } from './claims';
-import { sendAdminInviteEmail, sendOtpEmail, sendResolveEmail } from './email';
+import { sendAdminInviteEmail, sendOtpEmail, sendResolveEmail as sendResolveEmailFn } from './email';
 import { fetchDisplayName, publishResolvedFeedEntry } from './resolved_feed';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {
@@ -804,7 +804,99 @@ export const itemLifecycle = onDocumentUpdated(
     }
   }
 );
-
+ 
+// ── Send Resolve Email (triggered when item status changes to resolved) ───
+ 
+/**
+ * Firestore trigger: sends email when an item's status changes to resolved.
+ * Idempotent using `resolveEmailSentAt` flag on the item document.
+ * Also creates in-app notification and sends FCM push via existing notification trigger.
+ */
+export const sendResolveEmail = onDocumentUpdated(
+  { region: 'us-central1', document: 'items/{itemId}' },
+  async (event) => {
+    const before = event.data?.before.data() ?? {};
+    const after = event.data?.after.data() ?? {};
+ 
+    // Only trigger when status changes TO resolved (not from resolved)
+    if (before.status === RESOLVED_STATUS || after.status !== RESOLVED_STATUS) {
+      return;
+    }
+ 
+    // Idempotency check: skip if email already sent
+    if (after.resolveEmailSentAt) {
+      console.log(`[sendResolveEmail] Email already sent for item ${event.params.itemId}`);
+      return;
+    }
+ 
+    const itemId = event.params.itemId;
+    const itemTitle = after.title ?? 'an item';
+    const pickupDateTime = after.pickupDateTime ?? null;
+    const pickupLocation = after.pickupLocation ?? null;
+    const ownerUid = after.ownerUid ?? null;
+    const reportedBy = after.reportedBy ?? after.ownerUid ?? null;
+    const claimedBy = after.claimedBy ?? null;
+ 
+    const recipients = new Set<string>();
+    // Add claimant (if different from owner/reporter)
+    if (claimedBy && claimedBy !== reportedBy && claimedBy !== ownerUid) {
+      recipients.add(claimedBy);
+    }
+    // Add reporter/owner (if different from claimant)
+    if (reportedBy && reportedBy !== claimedBy) {
+      recipients.add(reportedBy);
+    }
+    // Add owner if different from reporter and claimant
+    if (ownerUid && ownerUid !== reportedBy && ownerUid !== claimedBy) {
+      recipients.add(ownerUid);
+    }
+ 
+    const appName = (process.env.APP_NAME ?? 'KAH KEN SHA NEY').trim();
+ 
+    for (const uid of recipients) {
+      try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists) {
+          console.log(`[sendResolveEmail] User ${uid} not found, skipping email`);
+          continue;
+        }
+        const userData = userDoc.data()!;
+        const email = userData.email;
+        const name = userData.displayName ?? 'there';
+        
+        if (!email || !isValidEmail(email)) {
+          console.log(`[sendResolveEmail] User ${uid} has no valid email, skipping`);
+          continue;
+        }
+ 
+        await sendResolveEmailFn({
+          to: email,
+          name,
+          itemTitle,
+          itemId,
+          pickupDateTime: pickupDateTime ?? undefined,
+          pickupLocation: pickupLocation ?? undefined,
+          appName,
+        });
+        console.log(`[sendResolveEmail] Email sent to ${uid} for item ${itemId}`);
+      } catch (error) {
+        console.error(`[sendResolveEmail] Failed to send email to ${uid}:`, error);
+        // Don't throw - we want to continue with other recipients
+      }
+    }
+ 
+    // Mark email as sent (idempotency flag)
+    try {
+      await db.collection('items').doc(itemId).update({
+        resolveEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        resolveEmailStatus: 'sent',
+      });
+    } catch (error) {
+      console.error(`[sendResolveEmail] Failed to update email flag for ${itemId}:`, error);
+    }
+  }
+);
+ 
 // ── Claim Item (server-side, non-exclusive claims) ────────────────────────
 
 /**

@@ -13,72 +13,137 @@ import 'pages/report_lost_page.dart';
 import 'pages/submit_found_page.dart';
 import 'providers/profile_provider.dart';
 import 'theme/app_theme.dart';
-import 'utils/page_transitions.dart';
+import 'widgets/split_flap_splash.dart';
+
+Future<void> _initializeFirebase() async {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAppCheck.instance.activate(
+    providerAndroid: kReleaseMode
+        ? const AndroidPlayIntegrityProvider()
+        : const AndroidDebugProvider(),
+  );
+  debugPrint('App Check activated successfully');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load();
 
-  bool firebaseReady = false;
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    firebaseReady = true;
-  } catch (e) {
-    debugPrint('Firebase initialization failed: $e');
-  }
-
-  // Activate App Check so Cloud Functions and Firestore rules that enforce
-  // App Check can verify this client. Without this, callable functions
-  // may return NOT_FOUND instead of a clear "unauthenticated" error.
-  if (firebaseReady) {
-    try {
-      await FirebaseAppCheck.instance.activate(
-        providerAndroid: kReleaseMode
-            ? const AndroidPlayIntegrityProvider()
-            : const AndroidDebugProvider(),
-      );
-      debugPrint('App Check activated successfully');
-    } catch (e) {
-      // Log distinctly so App Check misconfigurations are immediately
-      // obvious in logs rather than surfacing as unrelated not-found errors.
-      debugPrint('[AppCheck] Activation failed: $e');
-    }
-  }
-
   GoogleFonts.config.allowRuntimeFetching = false;
-  runApp(AmongApp(firebaseReady: firebaseReady));
+
+  runApp(const AmongApp());
 }
 
 class AmongApp extends StatelessWidget {
-  const AmongApp({super.key, required this.firebaseReady});
-
-  final bool firebaseReady;
+  const AmongApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    if (!firebaseReady) {
-      return MaterialApp(
-        title: 'KAH KEN SHA NEY',
-        debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(),
-        home: const _FirebaseErrorScreen(),
+    return FutureBuilder<void>(
+      future: _initializeFirebase(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          // Show native splash while Firebase initializes
+          return MaterialApp(
+            title: 'KAH KEN SHA NEY',
+            debugShowCheckedModeBanner: false,
+            theme: buildAppTheme(),
+            home: const _NativeSplashPlaceholder(),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return MaterialApp(
+            title: 'KAH KEN SHA NEY',
+            debugShowCheckedModeBanner: false,
+            theme: buildAppTheme(),
+            home: const _FirebaseErrorScreen(),
+          );
+        }
+
+        // Firebase initialized - show split-flap splash screen then MainPage
+        return ChangeNotifierProvider(
+          create: (_) => ProfileProvider(),
+          child: MaterialApp(
+            title: 'KAH KEN SHA NEY',
+            debugShowCheckedModeBanner: false,
+            theme: buildAppTheme(),
+            home: const _SplashWrapper(),
+            routes: {
+              '/choose-action': (_) => const ChooseActionPage(),
+              '/report-lost': (_) => const ReportLostPage(),
+              '/submit-found': (_) => const SubmitFoundPage(),
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SplashWrapper extends StatefulWidget {
+  const _SplashWrapper();
+
+  @override
+  State<_SplashWrapper> createState() => _SplashWrapperState();
+}
+
+class _SplashWrapperState extends State<_SplashWrapper> {
+  bool _showSplash = true;
+
+  void _onSplashComplete() {
+    if (mounted) {
+      setState(() {
+        _showSplash = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showSplash) {
+      return SplitFlapSplashScreen(
+        initializationFuture: () async {
+          // Any additional initialization can go here
+          await Future.delayed(const Duration(milliseconds: 100));
+        },
+        onComplete: _onSplashComplete,
       );
     }
 
-    return ChangeNotifierProvider(
-      create: (_) => ProfileProvider(),
-      child: MaterialApp(
-        title: 'KAH KEN SHA NEY',
-        debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(),
-        home: const MainPage(),
-        routes: {
-          '/choose-action': (_) => const ChooseActionPage(),
-          '/report-lost': (_) => const ReportLostPage(),
-          '/submit-found': (_) => const SubmitFoundPage(),
-        },
+    return const MainPage();
+  }
+}
+
+/// Placeholder shown during Firebase initialization (before split-flap splash)
+class _NativeSplashPlaceholder extends StatelessWidget {
+  const _NativeSplashPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: AppColors.primary),
+            const SizedBox(height: 24),
+            Text(
+              'KAH KEN SHA NEY',
+              style: TextStyle(
+                fontFamily: 'BebasNeue',
+                fontSize: 48,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textPrimary,
+                letterSpacing: 4,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -132,11 +197,11 @@ class _FirebaseErrorScreen extends StatelessWidget {
                 const SizedBox(height: 32),
                 FilledButton.icon(
                   onPressed: () {
+                    // Restart the app by recreating the widget tree
+                    // In practice, this would need a proper app restart
                     Navigator.pushReplacement(
                       context,
-                      NoTransitionRoute(
-                        builder: (_) => const AmongApp(firebaseReady: false),
-                      ),
+                      MaterialPageRoute(builder: (_) => const AmongApp()),
                     );
                   },
                   icon: const Icon(Icons.refresh_rounded),
