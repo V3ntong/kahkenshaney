@@ -164,8 +164,8 @@ class _BigValue extends StatelessWidget {
       textBaseline: TextBaseline.alphabetic,
       crossAxisAlignment: CrossAxisAlignment.baseline,
       children: [
-        CountUp(
-          value: value,
+        CountUpText(
+          to: value,
           semanticsLabel: '$value $unit',
           style: const TextStyle(
             color: Colors.white,

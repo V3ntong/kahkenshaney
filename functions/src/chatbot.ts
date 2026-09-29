@@ -55,6 +55,11 @@ const MAX_MESSAGE_CHARS = 1000;
 const MAX_HISTORY_TURNS = 20;
 const MAX_TURN_CHARS = 4000;
 
+// Retry configuration for transient errors
+const MAX_RETRIES = 3;
+const BASE_RETRY_DELAY_MS = 1000;
+const MAX_RETRY_DELAY_MS = 8000;
+
 const rateLimitMap = new Map<string, { windowStart: number; count: number }>();
 
 /** Fixed-window rate limit keyed by caller (uid, falling back to IP). */

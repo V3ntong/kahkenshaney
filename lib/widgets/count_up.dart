@@ -6,37 +6,29 @@ import 'package:flutter/widgets.dart';
 /// A mixin that provides replay animation capabilities for count-up widgets.
 ///
 /// Widgets using this mixin will re-animate when:
-/// - The route becomes visible again (pop back, tab switch)
+/// - The app becomes visible again (resumed from background)
 /// - The value changes while visible
 mixin CountUpReplayMixin<T extends StatefulWidget> on State<T> {
-  final List<StreamSubscription> _subscriptions = [];
+  final List<VoidCallback> _cleanupCallbacks = [];
   bool _isVisible = true;
 
   @override
   void dispose() {
-    for (final sub in _subscriptions) {
-      sub.cancel();
+    for (final cb in _cleanupCallbacks) {
+      cb();
     }
-    _subscriptions.clear();
+    _cleanupCallbacks.clear();
     super.dispose();
   }
 
   /// Call this when the widget becomes visible (e.g., in didChangeDependencies)
   void registerVisibilityChange(VoidCallback onVisibilityChange) {
-    // Subscribe to route changes using a RouteObserver pattern
-    final route = ModalRoute.of(context);
-    if (route != null) {
-      // We can't directly listen to route changes, so we'll use
-      // didChangeDependencies and a RouteObserver at the app level
-      // For now, we'll use a simpler approach
-    }
-
     // Listen to app lifecycle
-    final binding = WidgetsBinding.instance;
-    final lifecycleSub = binding
-        .addObserver(_LifecycleObserver(onVisibilityChange))
-        as StreamSubscription;
-    _subscriptions.add(lifecycleSub);
+    final observer = _LifecycleObserver(onVisibilityChange);
+    WidgetsBinding.instance.addObserver(observer);
+    _cleanupCallbacks.add(() {
+      WidgetsBinding.instance.removeObserver(observer);
+    });
   }
 
   void setVisible(bool visible) {
@@ -59,60 +51,6 @@ class _LifecycleObserver extends WidgetsBindingObserver {
   }
 }
 
-/// A wrapper to convert WidgetsBindingObserver to StreamSubscription
-class _ObserverSubscription implements StreamSubscription<void> {
-  _ObserverObserver(this.observer);
-
-  final WidgetsBindingObserver observer;
-
-  @override
-  void onData(void Function(void) handleData) {}
-
-  @override
-  void onError(void Function(Object) handleError) {}
-
-  @override
-  void onDone(void Function() handleDone) {}
-
-  @override
-  void cancel() {
-    WidgetsBinding.instance.removeObserver(observer);
-  }
-
-  @override
-  void pause([Future<void> Function()? resumeSignal]) {}
-
-  @override
-  void resume() {}
-}
-
-/// A wrapper to convert WidgetsBindingObserver to StreamSubscription
-class _ObserverSubscription implements StreamSubscription<void> {
-  _ObserverSubscription(this.observer);
-
-  final WidgetsBindingObserver observer;
-
-  @override
-  void onData(void Function(void) handleData) {}
-
-  @override
-  void onError(void Function(Object) handleError) {}
-
-  @override
-  void onDone(void Function() handleDone) {}
-
-  @override
-  void cancel() {
-    WidgetsBinding.instance.removeObserver(observer);
-  }
-
-  @override
-  void pause([Future<void> Function() resumeSignal]) {}
-
-  @override
-  void resume() {}
-}
-
 /// A replay token that changes when the widget should replay its animation.
 ///
 /// This is a simple [ChangeNotifier] that other widgets can listen to.
@@ -130,7 +68,7 @@ class ReplayToken extends ChangeNotifier {
 /// A reusable count-up text widget with advanced features:
 /// - Animates from [from] to [to] with spring-like easing
 /// - Supports decimals, thousand separators, prefix/suffix
-/// - Replays animation when page becomes visible again (tab switch, pop back)
+/// - Replays animation when app becomes visible again (resume from background)
 /// - Animates from current displayed value when [to] changes
 /// - Uses tabular figures to prevent digit jitter
 /// - Respects "reduce motion" accessibility setting
@@ -196,7 +134,7 @@ class _CountUpTextState extends State<CountUpText>
   late AnimationController _controller;
   late Animation<double> _animation;
   late num _currentValue;
-  StreamSubscription<void>? _replaySubscription;
+  VoidCallback? _replayListener;
 
   @override
   void initState() {
@@ -222,11 +160,11 @@ class _CountUpTextState extends State<CountUpText>
 
     // Set up replay token listener
     if (widget.replayToken != null) {
-      _replaySubscription = widget.replayToken!
-          .addListener(_onReplayTokenChanged);
+      _replayListener = _onReplayTokenChanged;
+      widget.replayToken!.addListener(_replayListener!);
     }
 
-    // Register visibility change for route/tab switches
+    // Register visibility change for app resume
     registerVisibilityChange(_onVisibilityChanged);
 
     _startAnimation();
@@ -238,20 +176,19 @@ class _CountUpTextState extends State<CountUpText>
 
     if (oldWidget.to != widget.to) {
       // Target value changed - animate from current displayed value
-      _targetValue = widget.to;
       _startAnimation(fromCurrent: true);
     }
 
     if (oldWidget.replayToken != widget.replayToken) {
-      _replaySubscription?.cancel();
-      if (widget.replayToken != null) {
-        _replaySubscription = widget.replayToken!
-            .addListener(_onReplayTokenChanged);
+      if (_replayListener != null) {
+        oldWidget.replayToken?.removeListener(_replayListener!);
       }
-    }
-
-    if (oldWidget.from != widget.from) {
-      _currentValue = widget.from;
+      if (widget.replayToken != null) {
+        _replayListener = _onReplayTokenChanged;
+        widget.replayToken!.addListener(_replayListener!);
+      } else {
+        _replayListener = null;
+      }
     }
   }
 
@@ -308,7 +245,9 @@ class _CountUpTextState extends State<CountUpText>
 
   @override
   void dispose() {
-    _replaySubscription?.cancel();
+    if (_replayListener != null) {
+      widget.replayToken?.removeListener(_replayListener!);
+    }
     _controller.dispose();
     super.dispose();
   }
