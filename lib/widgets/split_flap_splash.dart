@@ -88,8 +88,6 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
       return;
     }
 
-    _isAnimating = true;
-
     // Stagger the animation start for each letter
     for (int i = 0; i < _controllers.length; i++) {
       if (_isDisposed) return;
@@ -125,7 +123,6 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
         builder: (context, constraints) {
           final isNarrow = constraints.maxWidth < 400;
           final fontSize = isNarrow ? 36.0 : 56.0;
-          final letterSpacing = isNarrow ? 4.0 : 8.0;
 
           // For narrow screens, split into two lines
           final lines = isNarrow
@@ -299,7 +296,6 @@ class SplitFlapSplashScreen extends StatefulWidget {
 
 class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
   bool _initComplete = false;
-  bool _splashComplete = false;
 
   @override
   void initState() {
@@ -327,10 +323,6 @@ class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
   void _onSplashComplete() {
     if (mounted && _initComplete) {
       widget.onComplete();
-    } else if (mounted) {
-      setState(() {
-        _splashComplete = true;
-      });
     }
   }
 
