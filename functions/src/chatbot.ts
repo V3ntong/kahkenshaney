@@ -167,7 +167,7 @@ export const kashtep = onCall(
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: (process.env.GEMINI_MODEL ?? 'gemini-3.6-flash').trim(),
+        model: (process.env.GEMINI_MODEL ?? 'gemini-1.5-flash').trim(),
         systemInstruction: SYSTEM_INSTRUCTION,
       });
 
@@ -182,13 +182,50 @@ export const kashtep = onCall(
         },
       });
 
-      const result = await chat.sendMessage(message);
-      const response = result.response.text();
+      // Retry logic with exponential backoff for transient errors
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const result = await chat.sendMessage(message);
+          const response = result.response.text();
 
-      return {
-        reply: response,
-        timestamp: new Date().toISOString(),
-      };
+          return {
+            reply: response,
+            timestamp: new Date().toISOString(),
+          };
+        } catch (error) {
+          lastError = error as Error;
+          const err = error as { message?: string; status?: number };
+          const text = err?.message ?? '';
+          
+          // Check if this is a retryable error
+          const isRetryable = 
+            err?.status === 429 ||  // Rate limited
+            err?.status === 503 ||  // Service unavailable
+            err?.status === 500 ||  // Internal server error
+            text.includes('overloaded') ||
+            text.includes('timeout') ||
+            text.includes('temporary') ||
+            text.includes('unavailable');
+          
+          if (attempt < MAX_RETRIES && isRetryable) {
+            // Exponential backoff with jitter
+            const delay = Math.min(
+              BASE_RETRY_DELAY_MS * Math.pow(2, attempt) + Math.random() * 1000,
+              MAX_RETRY_DELAY_MS
+            );
+            console.warn(`[kashtep] Attempt ${attempt + 1} failed, retrying in ${delay}ms:`, text);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          
+          // Non-retryable error or max retries reached
+          throw error;
+        }
+      }
+      
+      // Should not reach here, but TypeScript needs it
+      throw lastError || new Error('Max retries exceeded');
     } catch (error) {
       const err = error as { message?: string; status?: number };
       const text = err?.message ?? '';
@@ -210,6 +247,13 @@ export const kashtep = onCall(
         throw new HttpsError(
           'unavailable',
           'The assistant is temporarily unavailable. Please try again shortly.'
+        );
+      }
+      // For other errors that weren't caught by retry logic
+      if (text.includes('overloaded') || text.includes('timeout')) {
+        throw new HttpsError(
+          'unavailable',
+          'The assistant is temporarily overloaded. Please try again shortly.'
         );
       }
       throw new HttpsError('internal', 'Something went wrong. Please try again.');

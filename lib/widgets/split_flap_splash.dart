@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 /// A split-flap display splash screen that animates "KAH KEN SHA NEY"
-/// with a space after every 3 letters.
+/// with a space after every 3 letters (4 groups: KAH KEN SHA NEY).
 class SplitFlapSplash extends StatefulWidget {
   const SplitFlapSplash({
     super.key,
@@ -25,93 +25,104 @@ class SplitFlapSplash extends StatefulWidget {
 
 class _SplitFlapSplashState extends State<SplitFlapSplash>
     with TickerProviderStateMixin {
-  static const String _fullText = 'KAH KEN SHA NEY';
-  static const List<String> _letters = [
+  // The target text: "KAH KEN SHA NEY" (15 chars including 3 spaces)
+  static const List<String> _targetChars = [
     'K', 'A', 'H', ' ', 'K', 'E', 'N', ' ', 'S', 'H', 'A', ' ', 'N', 'E', 'Y'
   ];
-  static const int _staggerDelayMs = 150;
-  static const int _flipDurationMs = 400;
-
-  late final List<AnimationController> _controllers;
-  late final List<Animation<double>> _animations;
-  late final List<Animation<double>> _topAnimations;
-  late final List<Animation<double>> _bottomAnimations;
-  bool _isDisposed = false;
+  
+  // Timing constants
+  static const int _totalDurationMs = 2400;  // Total animation duration
+  static const int _staggerDelayMs = 100;    // Delay between each cell start
+  static const int _cellDurationMs = 500;    // Duration of each cell's flip
+  static const int _holdDurationMs = 500;    // Hold final text before completion
+  
+  // Animation
+  late final AnimationController _controller;
+  late final Animation<double> _progress;
+  
+  // Pre-computed scramble sequences for each cell (index 0-14)
+  late final List<List<String>> _scrambleSequences;
+  late final List<double> _settleProgress;
+  
+  bool _completed = false;
+  bool _animationsDisabled = false;
 
   @override
   void initState() {
     super.initState();
-    _initAnimations();
-    _startAnimation();
+    _initAnimation();
+    _precomputeScrambleSequences();
+    // Don't start animation here - wait for didChangeDependencies
   }
 
-  void _initAnimations() {
-    _controllers = List.generate(_letters.length, (index) {
-      return AnimationController(
-        duration: const Duration(milliseconds: _flipDurationMs),
-        vsync: this,
-      );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check for disabled animations once after dependencies are available
+    _animationsDisabled = MediaQuery.of(context).disableAnimations;
+    if (!_controller.isAnimating && !_completed) {
+      _startAnimation();
+    }
+  }
+
+  void _initAnimation() {
+    _controller = AnimationController(
+      duration: Duration(milliseconds: _totalDurationMs),
+      vsync: this,
+      animationBehavior: AnimationBehavior.preserve,
+    );
+    _progress = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _precomputeScrambleSequences() {
+    final rng = Random(0x4B4148); // "KAH" in hex as seed
+    
+    _scrambleSequences = List.generate(_targetChars.length, (index) {
+      final targetChar = _targetChars[index];
+      if (targetChar == ' ') {
+        return [' '];
+      }
+      
+      final sequenceLength = 8 + rng.nextInt(5); // 8-12 steps
+      final sequence = List<String>.generate(sequenceLength, (i) {
+        if (i == sequenceLength - 1) return targetChar;
+        return String.fromCharCode(65 + rng.nextInt(26));
+      });
+      return sequence;
     });
-
-    _animations = _controllers.map((controller) {
-      return CurvedAnimation(parent: controller, curve: Curves.easeOutCubic);
-    }).toList();
-
-    _topAnimations = _controllers.map((controller) {
-      return Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(
-          parent: controller,
-          curve: const Interval(0.0, 0.5, curve: Curves.easeOutCubic),
-        ),
-      );
-    }).toList();
-
-    _bottomAnimations = _controllers.map((controller) {
-      return Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(
-          parent: controller,
-          curve: const Interval(0.5, 1.0, curve: Curves.easeOutCubic),
-        ),
-      );
-    }).toList();
+    
+    _settleProgress = List.generate(_targetChars.length, (index) {
+      final startDelay = index * _staggerDelayMs;
+      final settleTime = startDelay + _cellDurationMs;
+      return (settleTime / _totalDurationMs).clamp(0.0, 1.0);
+    });
   }
 
   Future<void> _startAnimation() async {
-    if (_isDisposed) return;
-
-    // Check if animations should be disabled
-    if (MediaQuery.of(context).disableAnimations) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (!_isDisposed && mounted) {
-        widget.onComplete();
-      }
+    if (_completed) return;
+    
+    if (_animationsDisabled) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (mounted) widget.onComplete();
       return;
     }
 
-    // Stagger the animation start for each letter
-    for (int i = 0; i < _controllers.length; i++) {
-      if (_isDisposed) return;
-      final delay = Duration(milliseconds: i * _staggerDelayMs);
-      await Future.delayed(delay);
-      if (!_isDisposed && mounted) {
-        _controllers[i].forward();
-      }
-    }
-
-    // Wait for the last animation to complete plus a brief pause
-    await Future.delayed(const Duration(milliseconds: _flipDurationMs + 300));
+    await _controller.forward();
     
-    if (!_isDisposed && mounted) {
+    await Future.delayed(const Duration(milliseconds: _holdDurationMs));
+    
+    if (mounted && !_completed) {
+      _completed = true;
       widget.onComplete();
     }
   }
 
   @override
   void dispose() {
-    _isDisposed = true;
-    for (final controller in _controllers) {
-      controller.dispose();
-    }
+    _controller.dispose();
     super.dispose();
   }
 
@@ -119,136 +130,106 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: widget.backgroundColor,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 400;
-          final fontSize = isNarrow ? 36.0 : 56.0;
-
-          // For narrow screens, split into two lines
-          final lines = isNarrow
-              ? [
-                  _letters.sublist(0, 7).join(), // "KAH KEN"
-                  _letters.sublist(7).join(),   // "SHA NEY"
-                ]
-              : [_fullText];
-
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: lines.map((line) {
-                final chars = line.split('');
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: chars.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final char = entry.value;
-                      final globalIndex = lines.first == line
-                          ? index
-                          : 7 + index;
-                      
-                      if (char == ' ') {
-                        return SizedBox(width: isNarrow ? 16 : 32);
-                      }
-
-                      return _SplitFlapLetter(
-                        letter: char,
-                        animation: _animations[globalIndex],
-                        topAnimation: _topAnimations[globalIndex],
-                        bottomAnimation: _bottomAnimations[globalIndex],
-                        fontSize: fontSize,
-                        textColor: widget.textColor,
-                        isSpace: false,
-                      );
-                    }).toList(),
+      body: Center(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Use Flexible/Flex to handle overflow gracefully
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: _targetChars.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final char = entry.value;
+                        
+                        if (char == ' ') {
+                          return const SizedBox(width: 24);
+                        }
+                        
+                        return _SplitFlapLetter(
+                          targetChar: char,
+                          scrambleSequence: _scrambleSequences[index],
+                          settleProgress: _settleProgress[index],
+                          progress: _progress,
+                          fontSize: 56.0,
+                          textColor: widget.textColor,
+                        );
+                      }).toList(),
+                    ),
                   ),
-                );
-              }).toList(),
+                ),
+              ),
             ),
-          );
-        },
-      ),
-    );
+          },
+        ),
+      );
+    }
   }
 }
 
-/// Individual split-flap letter widget
+/// Individual split-flap letter widget - pure stateless, driven by parent progress
 class _SplitFlapLetter extends StatelessWidget {
   const _SplitFlapLetter({
-    required this.letter,
-    required this.animation,
-    required this.topAnimation,
-    required this.bottomAnimation,
+    required this.targetChar,
+    required this.scrambleSequence,
+    required this.settleProgress,
+    required this.progress,
     required this.fontSize,
     required this.textColor,
-    required this.isSpace,
   });
 
-  final String letter;
-  final Animation<double> animation;
-  final Animation<double> topAnimation;
-  final Animation<double> bottomAnimation;
+  final String targetChar;
+  final List<String> scrambleSequence;
+  final double settleProgress;
+  final Animation<double> progress;
   final double fontSize;
   final Color textColor;
-  final bool isSpace;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: animation,
+      animation: progress,
       builder: (context, child) {
-        final progress = animation.value;
+        final p = progress.value;
         
-        if (progress == 0) {
-          // Show random letters during flip
-          return _buildRandomLetter();
-        } else if (progress < 0.5) {
-          // Top half flipping
-          return _buildFlippingTop(progress * 2);
-        } else if (progress < 1.0) {
-          // Bottom half flipping
-          return _buildFlippingBottom((progress - 0.5) * 2);
-        } else {
-          // Final letter
-          return _buildFinalLetter();
+        // Check if this cell should show its final character
+        if (p >= settleProgress) {
+          return _buildLetter(targetChar);
         }
+        
+        // Calculate which scramble character to show based on progress
+        final cellStartProgress = (settleProgress - 1.0 / 15.0).clamp(0.0, 1.0);
+        
+        if (p <= cellStartProgress) {
+          // Not started yet - show first scramble char
+          return _buildLetter(scrambleSequence.first);
+        }
+        
+        // Interpolate through scramble sequence
+        final cellProgress = (p - cellStartProgress) / (settleProgress - cellStartProgress);
+        final sequenceIndex = (cellProgress.clamp(0.0, 1.0) * (scrambleSequence.length - 1)).floor();
+        final displayChar = scrambleSequence[sequenceIndex.clamp(0, scrambleSequence.length - 1)];
+        
+        // If we're in the flip phase (close to settle), do the split-flap rotation
+        final distanceToSettle = settleProgress - p;
+        if (distanceToSettle < 0.05 && distanceToSettle > 0) {
+          final flipProgress = 1.0 - (distanceToSettle / 0.05);
+          if (flipProgress < 0.5) {
+            return _buildFlippingTop(scrambleSequence[sequenceIndex], targetChar, flipProgress * 2);
+          } else {
+            return _buildFlippingBottom(scrambleSequence[sequenceIndex], targetChar, (flipProgress - 0.5) * 2);
+          }
+        }
+        
+        return _buildLetter(displayChar);
       },
     );
-  }
-
-  Widget _buildRandomLetter() {
-    // Generate a deterministic random letter based on the target letter
-    // This creates a consistent "random" sequence
-    final random = Random(letter.codeUnitAt(0) * 1000);
-    final randomChar = String.fromCharCode(65 + random.nextInt(26));
-    return _buildLetter(randomChar);
-  }
-
-  Widget _buildFlippingTop(double progress) {
-    // Top half rotates from 0 to -90 degrees
-    return Transform(
-      alignment: Alignment.bottomCenter,
-      transform: Matrix4.identity()
-        ..setEntry(3, 2, 0.001)
-        ..rotateX(-progress * pi / 2),
-      child: _buildLetterHalf(letter, isTop: true),
-    );
-  }
-
-  Widget _buildFlippingBottom(double progress) {
-    // Bottom half rotates from 90 to 0 degrees
-    return Transform(
-      alignment: Alignment.topCenter,
-      transform: Matrix4.identity()
-        ..setEntry(3, 2, 0.001)
-        ..rotateX((1 - progress) * pi / 2),
-      child: _buildLetterHalf(letter, isTop: false),
-    );
-  }
-
-  Widget _buildFinalLetter() {
-    return _buildLetter(letter);
   }
 
   Widget _buildLetter(String char) {
@@ -268,18 +249,41 @@ class _SplitFlapLetter extends StatelessWidget {
     );
   }
 
-  Widget _buildLetterHalf(String char, {required bool isTop}) {
-    return ClipRect(
-      child: Align(
-        alignment: isTop ? Alignment.bottomCenter : Alignment.topCenter,
-        heightFactor: 0.5,
-        child: _buildLetter(char),
+  Widget _buildFlippingTop(String fromChar, String toChar, double progress) {
+    return Transform(
+      alignment: Alignment.bottomCenter,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, 0.001)
+        ..rotateX(-progress * pi / 2),
+      child: ClipRect(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          heightFactor: 0.5,
+          child: _buildLetter(fromChar),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlippingBottom(String fromChar, String toChar, double progress) {
+    return Transform(
+      alignment: Alignment.topCenter,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, 0.001)
+        ..rotateX((1 - progress) * pi / 2),
+      child: ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: 0.5,
+child: _buildLetter(toChar),
+        ),
       ),
     );
   }
 }
 
-/// Splash screen that runs Firebase initialization in parallel with the animation
+/// Splash screen that runs the split-flap animation and initialization in parallel.
+/// Calls [onComplete] exactly once when both animation and initialization are done.
 class SplitFlapSplashScreen extends StatefulWidget {
   const SplitFlapSplashScreen({
     super.key,
@@ -295,33 +299,24 @@ class SplitFlapSplashScreen extends StatefulWidget {
 }
 
 class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
-  bool _initComplete = false;
+  bool _navigated = false;
 
   @override
   void initState() {
     super.initState();
-    _runParallel();
+    _run();
   }
 
-  Future<void> _runParallel() async {
-    // Run Firebase initialization and minimum splash duration in parallel
+  Future<void> _run() async {
     final initFuture = widget.initializationFuture();
-    const minSplashDuration = Duration(milliseconds: 3000);
 
     await Future.wait([
       initFuture,
-      Future.delayed(minSplashDuration),
+      Future.delayed(const Duration(milliseconds: 3500)),
     ]);
 
-    if (mounted) {
-      setState(() {
-        _initComplete = true;
-      });
-    }
-  }
-
-  void _onSplashComplete() {
-    if (mounted && _initComplete) {
+    if (mounted && !_navigated) {
+      _navigated = true;
       widget.onComplete();
     }
   }
@@ -329,7 +324,12 @@ class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
   @override
   Widget build(BuildContext context) {
     return SplitFlapSplash(
-      onComplete: _onSplashComplete,
+      onComplete: () {
+        if (mounted && !_navigated) {
+          _navigated = true;
+          widget.onComplete();
+        }
+      },
     );
   }
 }
