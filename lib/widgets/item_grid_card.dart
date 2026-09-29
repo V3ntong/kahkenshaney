@@ -6,6 +6,52 @@ import '../theme/app_tokens.dart';
 import 'glass_panel.dart';
 import 'status_badge.dart';
 
+String _getActivityLabelFromHistory(List<StatusHistoryEntry> history) {
+  final latestEntry = history.last;
+  final status = latestEntry.status;
+  switch (status) {
+    case 'approved':
+      return 'Approved';
+    case 'pendingVerification':
+    case 'verified':
+    case 'matched':
+    case 'pendingClaim':
+      return 'Updated';
+    case 'claimed':
+    case 'resolved':
+      return 'Claimed';
+    case 'closed':
+      return 'Archived';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return 'Updated';
+  }
+}
+
+Color _getActivityColorFromHistory(List<StatusHistoryEntry> history) {
+  final latestEntry = history.last;
+  final status = latestEntry.status;
+  switch (status) {
+    case 'approved':
+      return AppColors.success;
+    case 'pendingVerification':
+    case 'verified':
+    case 'matched':
+    case 'pendingClaim':
+      return AppColors.warning;
+    case 'claimed':
+    case 'resolved':
+      return AppColors.success;
+    case 'closed':
+      return AppColors.textTertiary;
+    case 'rejected':
+      return AppColors.error;
+    default:
+      return AppColors.info;
+  }
+}
+
 /// Reusable grid card for displaying a lost or found item.
 ///
 /// Shows the item image (or a placeholder), name, description, and location.
@@ -175,6 +221,47 @@ class ItemGridCard extends StatelessWidget {
                       ],
                     ),
 
+                    // Reporter name (if available)
+                    if (item.reporterUsername != null && item.reporterUsername!.isNotEmpty) ...[
+                      const SizedBox(height: AppTokens.space4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.person_outline_rounded,
+                            size: 12,
+                            color: AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: AppTokens.space3),
+                          Expanded(
+                            child: Text(
+                              item.reporterUsername!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTokens.labelSmall.copyWith(
+                                fontSize: 11,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    // Activity badge (if available)
+                    if (item.moderationStatus == ModerationStatus.pending) ...[
+                      const SizedBox(height: AppTokens.space4),
+                      _ActivityBadge(label: 'New', color: AppColors.info),
+                    ] else if (item.approvedAt != null && item.status != ItemStatus.resolved && item.status != ItemStatus.closed) ...[
+                      const SizedBox(height: AppTokens.space4),
+                      _ActivityBadge(label: 'Approved', color: AppColors.success),
+                    ] else if (item.statusHistory.isNotEmpty) ...[
+                      const SizedBox(height: AppTokens.space4),
+                      _ActivityBadge(
+                        label: _getActivityLabelFromHistory(item.statusHistory),
+                        color: _getActivityColorFromHistory(item.statusHistory),
+                      ),
+                    ],
+
                     const SizedBox(height: AppTokens.space4),
 
                     // Status pill — pinned to bottom via parent Column max
@@ -187,6 +274,90 @@ class ItemGridCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Activity Badge Helpers ────────────────────────────────────────────────
+
+String _getActivityLabelFromHistory(List<StatusHistoryEntry> history) {
+  final latestEntry = history.last;
+  final status = latestEntry.status;
+  switch (status) {
+    case 'approved':
+      return 'Approved';
+    case 'pendingVerification':
+    case 'verified':
+    case 'matched':
+    case 'pendingClaim':
+      return 'Updated';
+    case 'claimed':
+    case 'resolved':
+      return 'Claimed';
+    case 'closed':
+      return 'Archived';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return 'Updated';
+  }
+}
+
+Color _getActivityColorFromHistory(List<StatusHistoryEntry> history) {
+  final latestEntry = history.last;
+  final status = latestEntry.status;
+  switch (status) {
+    case 'approved':
+      return AppColors.success;
+    case 'pendingVerification':
+    case 'verified':
+    case 'matched':
+    case 'pendingClaim':
+      return AppColors.warning;
+    case 'claimed':
+    case 'resolved':
+      return AppColors.success;
+    case 'closed':
+      return AppColors.textTertiary;
+    case 'rejected':
+      return AppColors.error;
+    default:
+      return AppColors.info;
+  }
+}
+
+// ─── Activity Badge ────────────────────────────────────────────────────────
+
+class _ActivityBadge extends StatelessWidget {
+  const _ActivityBadge({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: color,
+            letterSpacing: 0.2,
+          ),
         ),
       ),
     );

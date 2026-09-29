@@ -536,6 +536,23 @@ class _ReviewCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
                         ),
                       ],
+                      if (item.reporterUsername != null && item.reporterUsername!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(Icons.person_outline_rounded, size: 11, color: AppColors.textTertiary),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                item.reporterUsername!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -712,6 +729,17 @@ class _ItemDetailSheet extends StatelessWidget {
                     const Icon(Icons.place_outlined, size: 16, color: AppColors.textTertiary),
                     const SizedBox(width: 6),
                     Text(item.location!, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ],
+
+              if (item.reporterUsername != null && item.reporterUsername!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline_rounded, size: 16, color: AppColors.textTertiary),
+                    const SizedBox(width: 6),
+                    Text('Reported by: ${item.reporterUsername}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                   ],
                 ),
               ],

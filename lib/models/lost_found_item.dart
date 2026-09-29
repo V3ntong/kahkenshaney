@@ -196,6 +196,7 @@ class LostFoundItem {
     this.claimCount = 0,
     this.resolvedByAdminId,
     this.resolvedAt,
+    this.approvedAt,
     this.pickupDateTime,
     this.pickupLocation,
     this.matchScores = const [],
@@ -245,6 +246,9 @@ class LostFoundItem {
 
   /// The timestamp when the item was resolved.
   final DateTime? resolvedAt;
+
+  /// When the item was approved by moderation (for activity sorting).
+  final DateTime? approvedAt;
 
   /// When the item can be picked up (null = available now).
   final DateTime? pickupDateTime;
@@ -305,6 +309,7 @@ class LostFoundItem {
     int? claimCount,
     String? resolvedByAdminId,
     DateTime? resolvedAt,
+    DateTime? approvedAt,
     DateTime? pickupDateTime,
     String? pickupLocation,
     List<ItemMatchScore>? matchScores,
@@ -335,6 +340,7 @@ class LostFoundItem {
       claimCount: claimCount ?? this.claimCount,
       resolvedByAdminId: resolvedByAdminId ?? this.resolvedByAdminId,
       resolvedAt: resolvedAt ?? this.resolvedAt,
+      approvedAt: approvedAt ?? this.approvedAt,
       pickupDateTime: pickupDateTime ?? this.pickupDateTime,
       pickupLocation: pickupLocation ?? this.pickupLocation,
       matchScores: matchScores ?? this.matchScores,
@@ -373,6 +379,7 @@ factory LostFoundItem.fromMap(String id, Map<String, dynamic> map) {
       claimCount: ((map['claimCount'] as num?) ?? 0).toInt(),
       resolvedByAdminId: map['resolvedByAdminId'] as String?,
       resolvedAt: _toDate(map['resolvedAt']),
+      approvedAt: _toDate(map['approvedAt']),
       pickupDateTime: _toDate(map['pickupDateTime']),
       pickupLocation: map['pickupLocation'] as String?,
       matchScores: ((map['matchScores'] as List?) ?? const [])
@@ -407,6 +414,7 @@ factory LostFoundItem.fromMap(String id, Map<String, dynamic> map) {
       'claimCount': claimCount,
       'resolvedByAdminId': resolvedByAdminId,
       'resolvedAt': resolvedAt,
+      'approvedAt': approvedAt,
       'pickupDateTime': pickupDateTime,
       'pickupLocation': pickupLocation,
       'matchScores': matchScores.map((e) => e.toMap()).toList(),

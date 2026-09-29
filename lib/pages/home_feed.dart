@@ -622,8 +622,11 @@ class _RecentlyReportedSection extends StatelessWidget {
             final lostItems = lostSnap.data ?? const <LostFoundItem>[];
             final foundItems = foundSnap.data ?? const <LostFoundItem>[];
             final all = [...lostItems, ...foundItems]
-              ..sort((a, b) => (b.createdAt ?? DateTime(0))
-                  .compareTo(a.createdAt ?? DateTime(0)));
+              ..sort((a, b) {
+                final aTime = _getLastActivityTime(a) ?? DateTime(0);
+                final bTime = _getLastActivityTime(b) ?? DateTime(0);
+                return bTime.compareTo(aTime);
+              });
 
             if (all.isEmpty) return const SizedBox.shrink();
 
@@ -677,11 +680,111 @@ class _RecentlyReportedSection extends StatelessWidget {
           },
         );
       },
-    );
+);
   }
 }
 
-/// Date-bucket labels in display order. Items are grouped by `createdAt`
+/// Returns the most recent activity timestamp for an item.
+/// Priority: claimedAt > approvedAt > resolvedAt > createdAt
+DateTime? _getLastActivityTime(LostFoundItem item) {
+  final times = <DateTime>[];
+  if (item.statusHistory.isNotEmpty) {
+    // Find the most recent status change
+    for (final entry in item.statusHistory.reversed) {
+      if (entry.changedAt != null) {
+        times.add(entry.changedAt!);
+        break;
+      }
+    }
+  }
+  if (item.approvedAt != null) times.add(item.approvedAt!);
+  if (item.resolvedAt != null) times.add(item.resolvedAt!);
+  if (item.createdAt != null) times.add(item.createdAt!);
+  if (times.isEmpty) return null;
+  times.sort((a, b) => b.compareTo(a));
+  return times.first;
+}
+
+/// Returns an activity badge label for an item based on its latest activity.
+String? _getActivityBadge(LostFoundItem item) {
+  if (item.statusHistory.isNotEmpty) {
+    final latestEntry = item.statusHistory.last;
+    final status = latestEntry.status;
+    switch (status) {
+      case 'approved':
+        return 'Approved';
+      case 'pendingVerification':
+      case 'verified':
+      case 'matched':
+      case 'pendingClaim':
+        return 'Updated';
+      case 'claimed':
+      case 'resolved':
+        return 'Claimed';
+      case 'closed':
+        return 'Archived';
+      case 'rejected':
+        return 'Rejected';
+    }
+  }
+  // Fallback: check moderation status
+  if (item.moderationStatus == ModerationStatus.approved && item.approvedAt != null) {
+    return 'Approved';
+  }
+  if (item.moderationStatus == ModerationStatus.pending) {
+    return 'New';
+  }
+  return null;
+}
+
+/// Used in ItemGridCard to show activity badge from history
+String _getActivityLabelFromHistory(List<StatusHistoryEntry> history) {
+  final latestEntry = history.last;
+  final status = latestEntry.status;
+  switch (status) {
+    case 'approved':
+      return 'Approved';
+    case 'pendingVerification':
+    case 'verified':
+    case 'matched':
+    case 'pendingClaim':
+      return 'Updated';
+    case 'claimed':
+    case 'resolved':
+      return 'Claimed';
+    case 'closed':
+      return 'Archived';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return 'Updated';
+  }
+}
+
+Color _getActivityColorFromHistory(List<StatusHistoryEntry> history) {
+  final latestEntry = history.last;
+  final status = latestEntry.status;
+  switch (status) {
+    case 'approved':
+      return AppColors.success;
+    case 'pendingVerification':
+    case 'verified':
+    case 'matched':
+    case 'pendingClaim':
+      return AppColors.warning;
+    case 'claimed':
+    case 'resolved':
+      return AppColors.success;
+    case 'closed':
+      return AppColors.textTertiary;
+    case 'rejected':
+      return AppColors.error;
+    default:
+      return AppColors.info;
+  }
+}
+
+/// Date-bucket labels in display order. Items are grouped by last activity
 /// relative to now, in the user's local timezone.
 const List<String> _dateBucketLabels = [
   'Today',
@@ -691,8 +794,8 @@ const List<String> _dateBucketLabels = [
   'Earlier',
 ];
 
-/// Buckets [items] (already sorted newest-first) into the labels above while
-/// preserving the order inside each bucket.
+/// Buckets [items] (already sorted newest-first by activity) into the labels
+/// above while preserving the order inside each bucket.
 Map<String, List<LostFoundItem>> _groupByDateBucket(
   List<LostFoundItem> items,
 ) {
@@ -701,15 +804,16 @@ Map<String, List<LostFoundItem>> _groupByDateBucket(
     for (final label in _dateBucketLabels) label: <LostFoundItem>[],
   };
   for (final item in items) {
-    groups[_dateBucketLabel(item.createdAt, now)]!.add(item);
+    final activityTime = _getLastActivityTime(item);
+    groups[_dateBucketLabel(activityTime, now)]!.add(item);
   }
   return groups;
 }
 
-String _dateBucketLabel(DateTime? createdAt, DateTime now) {
-  if (createdAt == null) return 'Earlier';
+String _dateBucketLabel(DateTime? activityTime, DateTime now) {
+  if (activityTime == null) return 'Earlier';
 
-  final local = createdAt.toLocal();
+  final local = activityTime.toLocal();
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(local.year, local.month, local.day);
 
@@ -721,7 +825,6 @@ String _dateBucketLabel(DateTime? createdAt, DateTime now) {
   if (day.year == now.year && day.month == now.month) return 'This Month';
   return 'Earlier';
 }
-
 // ─── Date Group Header ────────────────────────────────────────────────────
 
 class _DateGroupHeader extends StatelessWidget {
