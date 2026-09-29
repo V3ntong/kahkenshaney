@@ -1136,10 +1136,16 @@ class _RelatedItemsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (category == null || category!.isEmpty) return const SizedBox.shrink();
 
+    final oppositeKind = currentItem.kind == ItemKind.lost ? ItemKind.found : ItemKind.lost;
+
     return StreamBuilder<List<LostFoundItem>>(
-      stream: ItemRepository().streamItems(),
+      stream: ItemRepository().streamItems(kind: oppositeKind, limit: 50),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+        if (snapshot.hasError) {
+          debugPrint('[RelatedItems] Stream error: ${snapshot.error}');
           return const SizedBox.shrink();
         }
         final allItems = snapshot.data ?? const <LostFoundItem>[];
