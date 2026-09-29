@@ -105,8 +105,13 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
     if (_completed) return;
     
     if (_animationsDisabled) {
+      // Set controller to end value so final text is displayed
+      _controller.value = 1.0;
       await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) widget.onComplete();
+      if (mounted && !_completed) {
+        _completed = true;
+        widget.onComplete();
+      }
       return;
     }
 
@@ -133,7 +138,6 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
       body: Center(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Use Flexible/Flex to handle overflow gracefully
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: ConstrainedBox(
@@ -165,11 +169,11 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
                   ),
                 ),
               ),
-            ),
+            );
           },
         ),
-      );
-    }
+      ),
+    );
   }
 }
 
@@ -275,7 +279,7 @@ class _SplitFlapLetter extends StatelessWidget {
         child: Align(
           alignment: Alignment.topCenter,
           heightFactor: 0.5,
-child: _buildLetter(toChar),
+          child: _buildLetter(toChar),
         ),
       ),
     );
