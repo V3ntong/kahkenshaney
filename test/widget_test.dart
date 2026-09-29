@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amongapp/main.dart';
+import 'package:amongapp/mainpage.dart';
 import 'package:amongapp/screens/auth/login.dart';
 import 'package:amongapp/screens/auth/signup.dart';
 import 'package:amongapp/widgets/app_button.dart';
@@ -9,40 +10,34 @@ import 'package:amongapp/widgets/otp_input.dart';
 import 'package:amongapp/widgets/password_strength.dart';
 
 void main() {
-  group('Landing page (after splash)', () {
-    testWidgets('Landing page renders hero, CTA and footer', (WidgetTester tester) async {
-      await tester.pumpWidget(const AmongApp());
+  testWidgets('Landing page renders hero, CTA and footer', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: MainPage()));
+    await tester.pumpAndSettle();
 
-      // Wait for splash screen to complete
-      await tester.pump(const Duration(milliseconds: 600));
-
-      expect(find.text('KAH KEN SHA NEY'), findsWidgets);
-      expect(find.text('Get Started'), findsOneWidget);
-      expect(
-        find.textContaining('KAH KEN SHA NEY. All rights reserved.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('Get Started opens the Register screen', (WidgetTester tester) async {
-      await tester.pumpWidget(const AmongApp());
-
-      // Wait for splash screen to complete
-      await tester.pump(const Duration(milliseconds: 600));
-
-      await tester.tap(find.text('Get Started'));
-      await tester.pumpAndSettle();
-
-      // Get Started routes to the sign-up flow.
-      expect(find.text('Full Name'), findsOneWidget);
-      expect(find.text('Email Address'), findsOneWidget);
-      expect(find.text('Password'), findsOneWidget);
-      expect(find.text('Confirm Password'), findsOneWidget);
-      expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
-    });
+    expect(find.text('KAH KEN SHA NEY'), findsWidgets);
+    expect(find.text('Get Started'), findsOneWidget);
+    expect(
+      find.textContaining('KAH KEN SHA NEY. All rights reserved.'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('Login shows validation errors for empty fields', (WidgetTester tester) async {
+  testWidgets('Get Started opens the Register screen', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: MainPage()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Get Started'));
+    await tester.pumpAndSettle();
+
+    // Get Started routes to the sign-up flow.
+    expect(find.text('Full Name'), findsOneWidget);
+    expect(find.text('Email Address'), findsOneWidget);
+    expect(find.text('Password'), findsOneWidget);
+    expect(find.text('Confirm Password'), findsOneWidget);
+    expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
+  });
+
+  testWidgets('Login shows validation errors for empty fields', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: LoginScreen()),
     );
@@ -54,20 +49,22 @@ void main() {
     expect(find.text('Password is required.'), findsOneWidget);
   });
 
-  testWidgets('Login rejects an invalid email format', (WidgetTester tester) async {
+  testWidgets('Login rejects an invalid email format', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: LoginScreen()),
     );
 
-    await tester.enterText(find.byType(TextFormField).first, 'invalid-email');
-    await tester.enterText(find.byType(TextFormField).last, 'password123');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email Address'),
+      'not-an-email',
+    );
     await tester.tap(find.text('Login'));
     await tester.pumpAndSettle();
 
     expect(find.text('Please enter a valid email address.'), findsOneWidget);
   });
 
-  testWidgets('Register screen renders all required fields', (WidgetTester tester) async {
+  testWidgets('Register screen renders all required fields', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: SignupScreen()),
     );
@@ -76,106 +73,155 @@ void main() {
     expect(find.text('Email Address'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('Confirm Password'), findsOneWidget);
+    expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
   });
 
-  testWidgets('Register shows validation errors for empty fields', (WidgetTester tester) async {
+  testWidgets('Register shows validation errors for empty fields', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: SignupScreen()),
     );
 
-    await tester.tap(find.text('Create Account'));
+    await tester.ensureVisible(
+      find.widgetWithText(AppButton, 'Create Account'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(AppButton, 'Create Account'));
     await tester.pumpAndSettle();
 
     expect(find.text('Full name is required.'), findsOneWidget);
     expect(find.text('Email address is required.'), findsOneWidget);
     expect(find.text('Password is required.'), findsOneWidget);
-    expect(find.text('Confirm password is required.'), findsOneWidget);
+    expect(find.text('Please confirm your password.'), findsOneWidget);
   });
 
-  testWidgets('Register rejects mismatched confirm password', (WidgetTester tester) async {
+  testWidgets('Register rejects mismatched confirm password', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: SignupScreen()),
     );
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'John Doe');
-    await tester.enterText(find.byType(TextFormField).at(1), 'john@example.com');
-    await tester.enterText(find.byType(TextFormField).at(2), 'password123');
-    await tester.enterText(find.byType(TextFormField).at(3), 'different123');
-    await tester.tap(find.text('Create Account'));
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Full Name'),
+      'Jane Doe',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email Address'),
+      'jane@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Password'),
+      'Abcdefg1',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm Password'),
+      'Different1',
+    );
+
+    await tester.ensureVisible(
+      find.widgetWithText(AppButton, 'Create Account'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(AppButton, 'Create Account'));
     await tester.pumpAndSettle();
 
     expect(find.text('Passwords do not match.'), findsOneWidget);
   });
 
-  testWidgets('OTP input completes once all six boxes are filled', (WidgetTester tester) async {
-    void onCompleted(String code) {}
-
+  testWidgets('OTP input completes once all six boxes are filled',
+      (tester) async {
+    String? completed;
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: OTPInput(
-            onCompleted: onCompleted,
-          ),
-        ),
-      );
-
-      for (int i = 0; i < 6; i++) {
-        await tester.enterText(find.byType(TextField).at(i), '${i + 1}');
-      }
-
-      await tester.pump();
-      // If we reach here without exception, the OTP input accepted all 6 digits
-      expect(find.byType(OTPInput), findsOneWidget);
-    });
-  });
-
-  testWidgets('OTP input fits on narrow screens without overflowing', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
           body: Center(
-            child: SizedBox(
-              width: 300,
-              child: OTPInput(
-                onCompleted: (_) {},
-              ),
-            ),
+            child: OtpInput(onCompleted: (code) => completed = code),
           ),
         ),
-      );
+      ),
+    );
 
-    expect(find.byType(OTPInput), findsOneWidget);
-    // If we reach here without overflow error, the test passes
+    final fields = tester.widgetList<TextField>(find.byType(TextField));
+    expect(fields.length, 6);
+
+    for (var i = 0; i < 6; i++) {
+      await tester.enterText(find.byType(TextField).at(i), '${i + 1}');
+      await tester.pump();
+    }
+
+    expect(completed, '123456');
   });
 
-  testWidgets('Login renders unboxed layout', (WidgetTester tester) async {
+  testWidgets('OTP input fits on narrow screens without overflowing',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: OtpInput(onCompleted: (_) {}),
+          ),
+        ),
+      ),
+    );
+
+    final finder = find.byType(OtpInput);
+    await tester.binding.setSurfaceSize(const Size(312, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pump();
+
+    expect(finder, findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Login renders unboxed layout', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: LoginScreen()),
     );
 
-    // Verify the login card renders without unconstrained box errors
-    expect(find.byType(LoginScreen), findsOneWidget);
+    // The animated auth header renders the title uppercased.
+    expect(find.text('WELCOME BACK'), findsOneWidget);
+    expect(find.text('Email Address'), findsOneWidget);
+    expect(find.text('Password'), findsOneWidget);
+    expect(find.text('Forgot Password?'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    expect(find.text("Don't have an account?"), findsOneWidget);
+    expect(find.text('Sign Up'), findsOneWidget);
+
+    final loginY = tester.getTopLeft(find.widgetWithText(AppButton, 'Login')).dy;
+    final passwordY = tester.getTopLeft(find.widgetWithText(TextField, 'Password')).dy;
+    final forgotY = tester.getTopLeft(find.text('Forgot Password?')).dy;
+    expect(passwordY, lessThan(loginY));
+    expect(loginY, lessThan(forgotY));
   });
 
-  testWidgets('Login uses clean generic hints', (WidgetTester tester) async {
+  testWidgets('Login uses clean generic hints', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: LoginScreen()),
     );
 
-    // Verify the login card renders without unconstrained box errors
-    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Enter your email'), findsOneWidget);
+    expect(find.text('Enter your password'), findsOneWidget);
+    expect(find.text('you@example.com'), findsNothing);
+    expect(find.text('Jane Doe'), findsNothing);
   });
 
-  testWidgets('Register footer is anchored near the bottom and uses clean hints', (WidgetTester tester) async {
+  testWidgets('Register footer is anchored near the bottom and uses clean hints',
+      (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: SignupScreen()),
     );
 
-    // Verify the register screen renders without overflow
-    expect(find.byType(SignupScreen), findsOneWidget);
+    expect(find.text('Enter your full name'), findsOneWidget);
+    expect(find.text('surname.name@smctagum.edu.ph'), findsOneWidget);
+    expect(find.text('you@example.com'), findsNothing);
+    expect(find.text('Jane Doe'), findsNothing);
+
+    final registerButtonY =
+        tester.getTopLeft(find.widgetWithText(AppButton, 'Create Account')).dy;
+    final footerY = tester.getTopLeft(find.text('Already have an account?')).dy;
+    expect(footerY, greaterThan(registerButtonY));
   });
 
-  testWidgets('Forgot Password opens its screen without exceptions', (WidgetTester tester) async {
+  testWidgets('Forgot Password opens its screen without exceptions',
+      (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: LoginScreen()),
     );
@@ -183,31 +229,76 @@ void main() {
     await tester.tap(find.text('Forgot Password?'));
     await tester.pumpAndSettle();
 
-    // Should navigate to forgot password screen
-    expect(find.text('Reset Password'), findsOneWidget);
+    // The animated auth header renders the title uppercased.
+    expect(find.text('FORGOT PASSWORD'), findsOneWidget);
+    expect(find.text('Send Verification Code'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Password strength bar animates smoothly toward its target', (WidgetTester tester) async {
+  testWidgets('Password strength bar animates smoothly toward its target',
+      (tester) async {
+    var password = 'Abcdefg1!';
+    void Function(VoidCallback)? update;
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: PasswordStrength(password: ''),
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              update = setState;
+              return PasswordStrengthBar(password: password);
+            },
+          ),
         ),
-      );
-
-      // Verify the widget renders
-      expect(find.byType(PasswordStrength), findsOneWidget);
-    });
-  });
-
-  testWidgets('Firebase error screen shows when initialization fails', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: _FirebaseErrorScreen(),
       ),
     );
 
-    expect(find.text('Connection Error'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    await tester.pump();
+    final initial = tester
+        .widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        )
+        .value!;
+
+    await tester.pump(const Duration(milliseconds: 400));
+    final settled = tester
+        .widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        )
+        .value!;
+
+    expect(initial, lessThan(0.1));
+    expect(settled, closeTo(1.0, 0.05));
+
+    update!(() => password = 'abc');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 180));
+    final midway = tester
+        .widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        )
+        .value!;
+    expect(midway, greaterThan(0.0));
+    expect(midway, lessThan(1.0));
+
+    await tester.pump(const Duration(milliseconds: 400));
+    final shrunk = tester
+        .widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        )
+        .value!;
+    expect(shrunk, closeTo(0.0, 0.05));
+  });
+
+  testWidgets('App shows initialization placeholder while Firebase starts',
+      (tester) async {
+    await tester.pumpWidget(const AmongApp());
+    await tester.pump(const Duration(seconds: 1));
+
+    // Firebase is unavailable in the test environment, so the app must stay
+    // on the initialization placeholder instead of crashing or navigating.
+    expect(find.text('KAH KEN SHA NEY'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Get Started'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

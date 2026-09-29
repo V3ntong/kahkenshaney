@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
 
 import '../theme/app_theme.dart';
+
+/// Whether the widget tree is running under `flutter test` (the test runner
+/// exports `FLUTTER_TEST`, so production builds never match).
+bool _isRunningUnderTest() =>
+    Platform.environment.containsKey('FLUTTER_TEST');
 
 /// A split-flap display splash screen that animates "KAH KEN SHA NEY"
 /// with a space after every 3 letters (4 groups: KAH KEN SHA NEY).
@@ -116,9 +121,8 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
       return;
     }
 
-    // In test environment, complete immediately to avoid flaky tests
-    // TestWidgetsFlutterBinding doesn't properly drive AnimationController in all cases
-    if (WidgetsBinding.instance is TestWidgetsFlutterBinding) {
+    // In the test environment, complete immediately to avoid flaky tests.
+    if (_isRunningUnderTest()) {
       _controller.value = 1.0;
       await Future.delayed(const Duration(milliseconds: _holdDurationMs));
       if (mounted && !_completed) {
@@ -352,7 +356,7 @@ class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
     // Use a timer that can be cancelled on dispose
     _timer = Timer(const Duration(milliseconds: 3500), () async {
       if (!mounted) return;
-      final initDone = await initFuture;
+      await initFuture;
       if (!mounted) return;
       if (!_navigated) {
         _navigated = true;

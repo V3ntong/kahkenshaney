@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../data/firestore/item_repository.dart';
 import '../data/firestore/support_chat_service.dart';
 import '../data/storage/chat_image_uploader.dart';
 import '../models/support_message.dart';
 import '../theme/app_theme.dart';
+import 'item_detail_screen.dart';
 
 /// User-facing chat screen — shows the user's own thread with admin
 /// or a peer-to-peer conversation (Contact Reporter).
@@ -59,8 +61,9 @@ class _UserChatScreenState extends State<UserChatScreen> {
   bool get _hasItemContext => _itemId != null && _itemId!.isNotEmpty;
 
   /// Builds the item context card for the chat header
-  Widget? _buildItemContextCard() {
-    if (!_hasItemContext) return null;
+  Widget _buildItemContextCard() {
+    assert(_hasItemContext);
+    final itemId = _itemId!;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(12),
@@ -109,9 +112,9 @@ class _UserChatScreenState extends State<UserChatScreen> {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                if (_itemId != null)
+                if (itemId.length > 8)
                   Text(
-                    'ID: ${_itemId!.substring(0, 8)}...',
+                    'ID: ${itemId.substring(0, 8)}...',
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textTertiary,
@@ -121,32 +124,43 @@ class _UserChatScreenState extends State<UserChatScreen> {
             ),
           ),
           IconButton(
-            onPressed: () {
-              if (_itemId != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ItemDetailScreen(
-                      item: LostFoundItem.fromMap(_itemId!, {
-                        'id': _itemId,
-                        'title': _itemTitle ?? 'Item',
-                        'kind': 'found',
-                        'ownerUid': '',
-                        'status': 'resolved',
-                        'moderationStatus': 'approved',
-                      }),
-                      heroTagPrefix: 'chat',
-                    ),
-                  ),
-                );
-              }
-            },
+            onPressed: _openItemDetails,
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
             tooltip: 'View item details',
           ),
         ],
       ),
     );
+  }
+
+  /// Fetches the referenced item and opens its detail screen so the user can
+  /// review the item they contacted admin about.
+  Future<void> _openItemDetails() async {
+    final itemId = _itemId;
+    if (itemId == null || itemId.isEmpty) return;
+
+    try {
+      final item = await ItemRepository().getItem(itemId);
+      if (!mounted) return;
+      if (item == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This item is no longer available.')),
+        );
+        return;
+      }
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ItemDetailScreen(item: item, heroTagPrefix: 'chat'),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[UserChatScreen] _openItemDetails error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open item details.')),
+      );
+    }
   }
 
   /// Image sends that failed during the actual upload. Rendered inline at
@@ -508,26 +522,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
             if (itemId != null) ...[
               const SizedBox(height: 16),
               TextButton.icon(
-                onPressed: () {
-                  if (_itemId != null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ItemDetailScreen(
-                          item: LostFoundItem.fromMap(_itemId!, {
-                            'id': _itemId,
-                            'title': _itemTitle ?? 'Item',
-                            'kind': 'found',
-                            'ownerUid': '',
-                            'status': 'resolved',
-                            'moderationStatus': 'approved',
-                          }),
-                          heroTagPrefix: 'chat',
-                        ),
-                      ),
-                    );
-                  }
-                },
+                onPressed: _openItemDetails,
                 icon: const Icon(Icons.open_in_new_rounded, size: 18),
                 label: const Text('View Item Details'),
               ),
@@ -537,6 +532,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
       ),
     );
   }
+}
 
 // ── Message Bubble ────────────────────────────────────────────────────────
 
