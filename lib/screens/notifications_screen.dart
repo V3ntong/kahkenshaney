@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/firestore/notification_service.dart';
+import '../screens/user_chat_screen.dart';
 import '../theme/app_theme.dart';
 
 /// Notifications screen — shows all notifications for the user.
@@ -98,17 +99,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           final children = <Widget>[];
           for (final section in _groupByRecency(notifications)) {
             children.add(_SectionHeader(label: section.label));
-            for (final notif in section.notifications) {
-              children.add(
-                _NotificationTile(
-                  notification: notif,
-                  onTap: () async {
-                    await _service.markAsRead(widget.userId, notif.id);
-                    widget.onNotificationTap?.call(notif.relatedItemId);
-                  },
-                ),
-              );
-            }
+for (final notif in section.notifications) {
+                children.add(
+                  _NotificationTile(
+                    notification: notif,
+                    onTap: () async {
+                      await _service.markAsRead(widget.userId, notif.id);
+                      widget.onNotificationTap?.call(notif.relatedItemId);
+                    },
+                    onContactAdmin: notif.type == 'status_resolved' ||
+                            notif.type == 'claim_resolved'
+                        ? () {
+                            // Open admin support chat
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => UserChatScreen(
+                                  userId: widget.userId,
+                                  adminUid: '',
+                                  peerUid: 'admin',
+                                  peerName: 'Admin Support',
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
+                  ),
+                );
+              }
           }
           children.add(const SizedBox(height: 8));
 
@@ -195,16 +213,22 @@ class _NotificationTile extends StatelessWidget {
   const _NotificationTile({
     required this.notification,
     required this.onTap,
+    this.onContactAdmin,
   });
 
   final AppNotification notification;
   final VoidCallback onTap;
+  final VoidCallback? onContactAdmin;
 
   @override
   Widget build(BuildContext context) {
     final icon = _iconForType(notification.type);
     final color = _colorForType(notification.type);
     final unread = !notification.isRead;
+
+    // Show contact admin button for resolved/claim resolved notifications
+    final showContactAdmin = notification.type == 'status_resolved' ||
+        notification.type == 'claim_resolved';
 
     // Rounded-square, colour-coded container so notification types can be
     // scanned at a glance (green = approved/resolved, blue = submitted, ...).
@@ -263,16 +287,30 @@ class _NotificationTile extends StatelessWidget {
           fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
         ),
       ),
-      trailing: notification.createdAt != null
-          ? Text(
-              _formatRelativeTime(notification.createdAt!),
-              style: TextStyle(
-                fontSize: 11,
-                color: unread ? AppColors.primary : AppColors.textTertiary,
-                fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+      trailing: showContactAdmin && onContactAdmin != null
+          ? TextButton(
+              onPressed: onContactAdmin,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Contact Admin',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
               ),
             )
-          : null,
+          : notification.createdAt != null
+              ? Text(
+                  _formatRelativeTime(notification.createdAt!),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: unread ? AppColors.primary : AppColors.textTertiary,
+                    fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                )
+              : null,
     );
 
     // Unread rows get a soft tint so they stand out from read history.

@@ -601,6 +601,34 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ],
 
+                  // Contact Admin button (for resolved items - claimants/owners)
+                  if (item.status == ItemStatus.resolved || item.status == ItemStatus.claimed) ...[
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _contactAdmin(context),
+                        icon: const Icon(
+                          Icons.support_agent_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('Contact Admin'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
                   // Related Items
                   const SizedBox(height: 28),
                   _RelatedItemsSection(
@@ -655,6 +683,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           adminUid: '',
           peerUid: reporterUid,
           peerName: peerName,
+        ),
+      ),
+    );
+  }
+
+  void _contactAdmin(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return;
+
+    // Open admin support chat with item context
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserChatScreen(
+          userId: currentUid,
+          adminUid: '', // Empty adminUid means it'll find/create admin chat
+          peerUid: 'admin',
+          peerName: 'Admin Support',
         ),
       ),
     );

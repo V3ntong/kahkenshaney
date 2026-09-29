@@ -17,7 +17,7 @@ import {
   validateMatchConfirm,
   validateResolve,
 } from './claims';
-import { sendAdminInviteEmail, sendOtpEmail } from './email';
+import { sendAdminInviteEmail, sendOtpEmail, sendResolveEmail } from './email';
 import { fetchDisplayName, publishResolvedFeedEntry } from './resolved_feed';
 import { generateOtp, generateSalt, hashOtp, verifyOtpHash } from './otp';
 import {

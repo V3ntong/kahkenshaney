@@ -83,8 +83,8 @@ class ItemGridCard extends StatelessWidget {
     final location = item.location?.isNotEmpty == true
         ? item.location!
         : item.storageLocation?.isNotEmpty == true
-        ? item.storageLocation!
-        : '';
+            ? item.storageLocation!
+            : '';
 
     return GestureDetector(
       onTap: onTap,
@@ -222,7 +222,8 @@ class ItemGridCard extends StatelessWidget {
                     ),
 
                     // Reporter name (if available)
-                    if (item.reporterUsername != null && item.reporterUsername!.isNotEmpty) ...[
+                    if (item.reporterUsername != null &&
+                        item.reporterUsername!.isNotEmpty) ...[
                       const SizedBox(height: AppTokens.space4),
                       Row(
                         children: [
@@ -251,7 +252,9 @@ class ItemGridCard extends StatelessWidget {
                     if (item.moderationStatus == ModerationStatus.pending) ...[
                       const SizedBox(height: AppTokens.space4),
                       _ActivityBadge(label: 'New', color: AppColors.info),
-                    ] else if (item.approvedAt != null && item.status != ItemStatus.resolved && item.status != ItemStatus.closed) ...[
+                    ] else if (item.approvedAt != null &&
+                        item.status != ItemStatus.resolved &&
+                        item.status != ItemStatus.closed) ...[
                       const SizedBox(height: AppTokens.space4),
                       _ActivityBadge(label: 'Approved', color: AppColors.success),
                     ] else if (item.statusHistory.isNotEmpty) ...[
@@ -277,54 +280,6 @@ class ItemGridCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ─── Activity Badge Helpers ────────────────────────────────────────────────
-
-String _getActivityLabelFromHistory(List<StatusHistoryEntry> history) {
-  final latestEntry = history.last;
-  final status = latestEntry.status;
-  switch (status) {
-    case 'approved':
-      return 'Approved';
-    case 'pendingVerification':
-    case 'verified':
-    case 'matched':
-    case 'pendingClaim':
-      return 'Updated';
-    case 'claimed':
-    case 'resolved':
-      return 'Claimed';
-    case 'closed':
-      return 'Archived';
-    case 'rejected':
-      return 'Rejected';
-    default:
-      return 'Updated';
-  }
-}
-
-Color _getActivityColorFromHistory(List<StatusHistoryEntry> history) {
-  final latestEntry = history.last;
-  final status = latestEntry.status;
-  switch (status) {
-    case 'approved':
-      return AppColors.success;
-    case 'pendingVerification':
-    case 'verified':
-    case 'matched':
-    case 'pendingClaim':
-      return AppColors.warning;
-    case 'claimed':
-    case 'resolved':
-      return AppColors.success;
-    case 'closed':
-      return AppColors.textTertiary;
-    case 'rejected':
-      return AppColors.error;
-    default:
-      return AppColors.info;
   }
 }
 
