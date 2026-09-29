@@ -162,15 +162,17 @@ class ItemGridCard extends StatelessWidget {
             Flexible(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
-                  AppTokens.space12,
                   AppTokens.space10,
-                  AppTokens.space12,
-                  AppTokens.space12,
+                  AppTokens.space8,
+                  AppTokens.space10,
+                  AppTokens.space10,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     // Item name
                     Text(
                       item.title,
