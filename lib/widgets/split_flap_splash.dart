@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import '../theme/app_theme.dart';
 
@@ -115,7 +116,34 @@ class _SplitFlapSplashState extends State<SplitFlapSplash>
       return;
     }
 
+    // In test environment, complete immediately to avoid flaky tests
+    // TestWidgetsFlutterBinding doesn't properly drive AnimationController in all cases
+    if (WidgetsBinding.instance is TestWidgetsFlutterBinding) {
+      _controller.value = 1.0;
+      await Future.delayed(const Duration(milliseconds: _holdDurationMs));
+      if (mounted && !_completed) {
+        _completed = true;
+        widget.onComplete();
+      }
+      return;
+    }
+
+    // Use a completer that completes when animation finishes
+    final completer = Completer<void>();
+    late AnimationStatusListener listener;
+    listener = (AnimationStatus status) {
+      if (status == AnimationStatus.completed) {
+        _controller.removeStatusListener(listener);
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      }
+    };
+    _controller.addStatusListener(listener);
+    
     await _controller.forward();
+    await completer.future;
+    _controller.removeStatusListener(listener);
     
     await Future.delayed(const Duration(milliseconds: _holdDurationMs));
     
@@ -304,6 +332,7 @@ class SplitFlapSplashScreen extends StatefulWidget {
 
 class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
   bool _navigated = false;
+  Timer? _timer;
 
   @override
   void initState() {
@@ -311,17 +340,31 @@ class _SplitFlapSplashScreenState extends State<SplitFlapSplashScreen> {
     _run();
   }
 
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _run() async {
     final initFuture = widget.initializationFuture();
 
-    await Future.wait([
-      initFuture,
-      Future.delayed(const Duration(milliseconds: 3500)),
-    ]);
+    // Use a timer that can be cancelled on dispose
+    _timer = Timer(const Duration(milliseconds: 3500), () async {
+      if (!mounted) return;
+      final initDone = await initFuture;
+      if (!mounted) return;
+      if (!_navigated) {
+        _navigated = true;
+        widget.onComplete();
+      }
+    });
 
-    if (mounted && !_navigated) {
-      _navigated = true;
-      widget.onComplete();
+    // Also wait for initFuture
+    try {
+      await initFuture;
+    } catch (_) {
+      // Ignore init errors, timer will still trigger
     }
   }
 

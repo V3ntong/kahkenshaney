@@ -21,6 +21,8 @@ class UserChatScreen extends StatefulWidget {
     required this.adminUid,
     this.peerUid,
     this.peerName,
+    this.itemId,
+    this.itemTitle,
   });
 
   final String userId;
@@ -31,6 +33,10 @@ class UserChatScreen extends StatefulWidget {
 
   /// Display name for the peer (shown in app bar).
   final String? peerName;
+
+  /// Optional item context for "Contact Admin" flow.
+  final String? itemId;
+  final String? itemTitle;
 
   @override
   State<UserChatScreen> createState() => _UserChatScreenState();
@@ -44,6 +50,104 @@ class _UserChatScreenState extends State<UserChatScreen> {
   bool _readMarked = false;
   String? _chatId;
   bool get _isPeerChat => widget.peerUid != null;
+
+  /// Item context for "Contact Admin" flow
+  String? get _itemId => widget.itemId;
+  String? get _itemTitle => widget.itemTitle;
+
+  /// Whether this chat has item context
+  bool get _hasItemContext => _itemId != null && _itemId!.isNotEmpty;
+
+  /// Builds the item context card for the chat header
+  Widget? _buildItemContextCard() {
+    if (!_hasItemContext) return null;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.infoSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.info.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.inventory_2_rounded,
+              size: 24,
+              color: AppColors.info,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Item Context',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.info,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _itemTitle ?? 'Item',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (_itemId != null)
+                  Text(
+                    'ID: ${_itemId!.substring(0, 8)}...',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              if (_itemId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ItemDetailScreen(
+                      item: LostFoundItem.fromMap(_itemId!, {
+                        'id': _itemId,
+                        'title': _itemTitle ?? 'Item',
+                        'kind': 'found',
+                        'ownerUid': '',
+                        'status': 'resolved',
+                        'moderationStatus': 'approved',
+                      }),
+                      heroTagPrefix: 'chat',
+                    ),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            tooltip: 'View item details',
+          ),
+        ],
+      ),
+    );
+  }
 
   /// Image sends that failed during the actual upload. Rendered inline at
   /// the end of the message list with a persistent Retry affordance, instead
@@ -310,14 +414,19 @@ class _UserChatScreenState extends State<UserChatScreen> {
                   });
                 }
 
-                final total = messages.length + _failedUploads.length;
+                final total = messages.length + _failedUploads.length + (_hasItemContext ? 1 : 0);
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   itemCount: total,
                   itemBuilder: (context, index) {
-                    if (index < messages.length) {
-                      final msg = messages[index];
+                    // Show item context card at the top if we have item context
+                    if (_hasItemContext && index == 0) {
+                      return _buildItemContextCard();
+                    }
+                    final adjustedIndex = _hasItemContext ? index - 1 : index;
+                    if (adjustedIndex < messages.length) {
+                      final msg = messages[adjustedIndex];
                       final isMe = msg.senderId == widget.userId;
                       return _MessageBubble(
                         message: msg,
@@ -325,7 +434,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
                       );
                     }
                     final failed =
-                        _failedUploads[index - messages.length];
+                        _failedUploads[adjustedIndex - messages.length];
                     return _FailedUploadBubble(
                       upload: failed,
                       onRetry: () => _retryUpload(failed),
@@ -350,6 +459,10 @@ class _UserChatScreenState extends State<UserChatScreen> {
   }
 
   Widget _buildEmptyState() {
+    final hasItemContext = _hasItemContext;
+    final itemTitle = _itemTitle ?? 'Item';
+    final itemId = _itemId;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -371,7 +484,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              _isPeerChat ? 'Contact the reporter' : 'Start a conversation',
+              hasItemContext ? 'Contact Admin about "$_itemTitle"' : (_isPeerChat ? 'Contact the reporter' : 'Start a conversation'),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -380,9 +493,11 @@ class _UserChatScreenState extends State<UserChatScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              _isPeerChat
-                  ? 'Send a message to the person who reported this item.'
-                  : 'Send a message to our support team. We\'re here to help!',
+              hasItemContext
+                  ? 'Send a message to admin about "$itemTitle" (ID: ${_itemId!.substring(0, 8)}...).'
+                  : (_isPeerChat
+                      ? 'Send a message to the person who reported this item.'
+                      : 'Send a message to our support team. We\'re here to help!'),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 14,
@@ -390,12 +505,38 @@ class _UserChatScreenState extends State<UserChatScreen> {
                 color: AppColors.textSecondary,
               ),
             ),
+            if (itemId != null) ...[
+              const SizedBox(height: 16),
+              TextButton.icon(
+                onPressed: () {
+                  if (_itemId != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItemDetailScreen(
+                          item: LostFoundItem.fromMap(_itemId!, {
+                            'id': _itemId,
+                            'title': _itemTitle ?? 'Item',
+                            'kind': 'found',
+                            'ownerUid': '',
+                            'status': 'resolved',
+                            'moderationStatus': 'approved',
+                          }),
+                          heroTagPrefix: 'chat',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                label: const Text('View Item Details'),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-}
 
 // ── Message Bubble ────────────────────────────────────────────────────────
 

@@ -107,23 +107,25 @@ for (final notif in section.notifications) {
                       await _service.markAsRead(widget.userId, notif.id);
                       widget.onNotificationTap?.call(notif.relatedItemId);
                     },
-                    onContactAdmin: notif.type == 'status_resolved' ||
-                            notif.type == 'claim_resolved'
-                        ? () {
-                            // Open admin support chat
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => UserChatScreen(
-                                  userId: widget.userId,
-                                  adminUid: '',
-                                  peerUid: 'admin',
-                                  peerName: 'Admin Support',
-                                ),
-                              ),
-                            );
-                          }
-                        : null,
+onContactAdmin: notif.type == 'status_resolved' ||
+                        notif.type == 'claim_resolved'
+                    ? () {
+                        // Open admin support chat with item context
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => UserChatScreen(
+                              userId: widget.userId,
+                              adminUid: '',
+                              peerUid: 'admin',
+                              peerName: 'Admin Support',
+                              itemId: notif.relatedItemId,
+                              itemTitle: notif.title,
+                            ),
+                          ),
+                        );
+                      }
+                      : null,
                   ),
                 );
               }
