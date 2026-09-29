@@ -173,71 +173,45 @@ class ItemGridCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                    // Item name
-                    Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTokens.labelBold,
-                    ),
-
-                    // Description (truncated)
-                    if (item.description.isNotEmpty)
-                      Flexible(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: AppTokens.space3),
-                          child: Text(
-                            item.description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTokens.bodySmall.copyWith(
-                              fontSize: 12,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
+                      // Item name
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTokens.labelBold,
                       ),
 
-                    const SizedBox(height: AppTokens.space6),
-
-                    // Location + time
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.place_outlined,
-                          size: 12,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: AppTokens.space3),
-                        Expanded(
-                          child: Text(
-                            location.isNotEmpty ? location : 'No location',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTokens.labelSmall.copyWith(
-                              fontSize: 11,
-                              color: AppColors.textTertiary,
+                      // Description (truncated)
+                      if (item.description.isNotEmpty)
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: AppTokens.space3),
+                            child: Text(
+                              item.description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTokens.bodySmall.copyWith(
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
 
-                    // Reporter name (if available)
-                    if (item.reporterUsername != null &&
-                        item.reporterUsername!.isNotEmpty) ...[
-                      const SizedBox(height: AppTokens.space4),
+                      const SizedBox(height: AppTokens.space6),
+
+                      // Location + time
                       Row(
                         children: [
                           const Icon(
-                            Icons.person_outline_rounded,
+                            Icons.place_outlined,
                             size: 12,
                             color: AppColors.textTertiary,
                           ),
                           const SizedBox(width: AppTokens.space3),
                           Expanded(
                             child: Text(
-                              item.reporterUsername!,
+                              location.isNotEmpty ? location : 'No location',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: AppTokens.labelSmall.copyWith(
@@ -248,33 +222,60 @@ class ItemGridCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ],
 
-                    // Activity badge (if available)
-                    if (item.moderationStatus == ModerationStatus.pending) ...[
+                      // Reporter name (if available)
+                      if (item.reporterUsername != null &&
+                          item.reporterUsername!.isNotEmpty) ...[
+                        const SizedBox(height: AppTokens.space4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.person_outline_rounded,
+                              size: 12,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: AppTokens.space3),
+                            Expanded(
+                              child: Text(
+                                item.reporterUsername!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTokens.labelSmall.copyWith(
+                                  fontSize: 11,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Activity badge (if available)
+                      if (item.moderationStatus == ModerationStatus.pending) ...[
+                        const SizedBox(height: AppTokens.space4),
+                        _ActivityBadge(label: 'New', color: AppColors.info),
+                      ] else if (item.approvedAt != null &&
+                          item.status != ItemStatus.resolved &&
+                          item.status != ItemStatus.closed) ...[
+                        const SizedBox(height: AppTokens.space4),
+                        _ActivityBadge(label: 'Approved', color: AppColors.success),
+                      ] else if (item.statusHistory.isNotEmpty) ...[
+                        const SizedBox(height: AppTokens.space4),
+                        _ActivityBadge(
+                          label: _getActivityLabelFromHistory(item.statusHistory),
+                          color: _getActivityColorFromHistory(item.statusHistory),
+                        ),
+                      ],
+
                       const SizedBox(height: AppTokens.space4),
-                      _ActivityBadge(label: 'New', color: AppColors.info),
-                    ] else if (item.approvedAt != null &&
-                        item.status != ItemStatus.resolved &&
-                        item.status != ItemStatus.closed) ...[
-                      const SizedBox(height: AppTokens.space4),
-                      _ActivityBadge(label: 'Approved', color: AppColors.success),
-                    ] else if (item.statusHistory.isNotEmpty) ...[
-                      const SizedBox(height: AppTokens.space4),
-                      _ActivityBadge(
-                        label: _getActivityLabelFromHistory(item.statusHistory),
-                        color: _getActivityColorFromHistory(item.statusHistory),
+
+                      // Status pill — pinned to bottom via parent Column max
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: StatusBadge.fromItemStatus(item.status),
                       ),
                     ],
-
-                    const SizedBox(height: AppTokens.space4),
-
-                    // Status pill — pinned to bottom via parent Column max
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: StatusBadge.fromItemStatus(item.status),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
