@@ -214,9 +214,9 @@ class _UserChatScreenState extends State<UserChatScreen> {
       final message = e.toString().contains('no peer user')
           ? 'Could not open chat: invalid user.'
           : 'Could not open chat. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       if (mounted) Navigator.of(context).pop();
     }
   }
@@ -256,7 +256,9 @@ class _UserChatScreenState extends State<UserChatScreen> {
       debugPrint('[UserChatScreen] sendMessage error: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to send message. Please try again.')),
+        const SnackBar(
+          content: Text('Failed to send message. Please try again.'),
+        ),
       );
     });
 
@@ -278,7 +280,10 @@ class _UserChatScreenState extends State<UserChatScreen> {
 
   Future<void> _pickAndSendImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
     if (picked == null || !mounted) return;
 
     final file = File(picked.path);
@@ -295,9 +300,9 @@ class _UserChatScreenState extends State<UserChatScreen> {
       if (e.preflight) {
         // Avoidable failure (type/size) — tell the user exactly what's wrong
         // and don't leave a retryable bubble behind.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
         return;
       }
       // Real upload failure — keep it on screen with a retry affordance.
@@ -343,14 +348,18 @@ class _UserChatScreenState extends State<UserChatScreen> {
             margin: const EdgeInsets.only(right: 12),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: _isPeerChat ? AppColors.infoSurface : AppColors.successSurface,
+              color: _isPeerChat
+                  ? AppColors.infoSurface
+                  : AppColors.successSurface,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  _isPeerChat ? Icons.person_rounded : Icons.support_agent_rounded,
+                  _isPeerChat
+                      ? Icons.person_rounded
+                      : Icons.support_agent_rounded,
                   size: 14,
                   color: _isPeerChat ? AppColors.info : AppColors.success,
                 ),
@@ -373,106 +382,121 @@ class _UserChatScreenState extends State<UserChatScreen> {
               child: CircularProgressIndicator(color: AppColors.primary),
             )
           : Column(
-        children: [
-          // ── Messages list ────────────────────────────────────
-          Expanded(
-            child: StreamBuilder<List<SupportMessage>>(
-              stream: _chatService!.streamMessages(chatId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  );
-                }
+              children: [
+                // ── Messages list ────────────────────────────────────
+                Expanded(
+                  child: StreamBuilder<List<SupportMessage>>(
+                    stream: _chatService!.streamMessages(chatId),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
+                        );
+                      }
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.cloud_off_rounded, size: 44, color: AppColors.error),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Could not load messages',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.cloud_off_rounded,
+                                  size: 44,
+                                  color: AppColors.error,
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Could not load messages',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  snapshot.error.toString(),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            snapshot.error.toString(),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
+                        );
+                      }
 
-                final messages = snapshot.data ?? const <SupportMessage>[];
+                      final messages =
+                          snapshot.data ?? const <SupportMessage>[];
 
-                if (messages.isEmpty && _failedUploads.isEmpty) {
-                  return _buildEmptyState();
-                }
+                      if (messages.isEmpty && _failedUploads.isEmpty) {
+                        return _buildEmptyState();
+                      }
 
-                // Mark as read once messages are visible.
-                if (!_readMarked) {
-                  _readMarked = true;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_isPeerChat) {
-                      _chatService?.markReadByPeer(chatId, widget.userId);
-                    } else {
-                      _chatService?.markReadByUser(chatId);
-                    }
-                  });
-                }
+                      // Mark as read once messages are visible.
+                      if (!_readMarked) {
+                        _readMarked = true;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (_isPeerChat) {
+                            _chatService?.markReadByPeer(chatId, widget.userId);
+                          } else {
+                            _chatService?.markReadByUser(chatId);
+                          }
+                        });
+                      }
 
-                final total = messages.length + _failedUploads.length + (_hasItemContext ? 1 : 0);
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  itemCount: total,
-                  itemBuilder: (context, index) {
-                    // Show item context card at the top if we have item context
-                    if (_hasItemContext && index == 0) {
-                      return _buildItemContextCard();
-                    }
-                    final adjustedIndex = _hasItemContext ? index - 1 : index;
-                    if (adjustedIndex < messages.length) {
-                      final msg = messages[adjustedIndex];
-                      final isMe = msg.senderId == widget.userId;
-                      return _MessageBubble(
-                        message: msg,
-                        isMe: isMe,
+                      final total =
+                          messages.length +
+                          _failedUploads.length +
+                          (_hasItemContext ? 1 : 0);
+                      return ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        itemCount: total,
+                        itemBuilder: (context, index) {
+                          // Show item context card at the top if we have item context
+                          if (_hasItemContext && index == 0) {
+                            return _buildItemContextCard();
+                          }
+                          final adjustedIndex = _hasItemContext
+                              ? index - 1
+                              : index;
+                          if (adjustedIndex < messages.length) {
+                            final msg = messages[adjustedIndex];
+                            final isMe = msg.senderId == widget.userId;
+                            return _MessageBubble(message: msg, isMe: isMe);
+                          }
+                          final failed =
+                              _failedUploads[adjustedIndex - messages.length];
+                          return _FailedUploadBubble(
+                            upload: failed,
+                            onRetry: () => _retryUpload(failed),
+                            onDiscard: () => _discardUpload(failed),
+                          );
+                        },
                       );
-                    }
-                    final failed =
-                        _failedUploads[adjustedIndex - messages.length];
-                    return _FailedUploadBubble(
-                      upload: failed,
-                      onRetry: () => _retryUpload(failed),
-                      onDiscard: () => _discardUpload(failed),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
+                    },
+                  ),
+                ),
 
-          // ── Input bar ────────────────────────────────────────
-          _InputBar(
-            controller: _controller,
-            focusNode: _focusNode,
-            onSend: _sendMessage,
-            onImagePick: _pickAndSendImage,
-          ),
-        ],
-      ),
+                // ── Input bar ────────────────────────────────────────
+                _InputBar(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  onSend: _sendMessage,
+                  onImagePick: _pickAndSendImage,
+                ),
+              ],
+            ),
     );
   }
 
@@ -480,8 +504,9 @@ class _UserChatScreenState extends State<UserChatScreen> {
     final hasItemContext = _hasItemContext;
     final itemTitle = _itemTitle ?? 'Item';
     final itemId = _itemId;
-    final shortItemId =
-        itemId != null && itemId.length > 8 ? itemId.substring(0, 8) : itemId;
+    final shortItemId = itemId != null && itemId.length > 8
+        ? itemId.substring(0, 8)
+        : itemId;
 
     return Center(
       child: Padding(
@@ -493,18 +518,26 @@ class _UserChatScreenState extends State<UserChatScreen> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: _isPeerChat ? AppColors.infoSurface : AppColors.primarySurface,
+                color: _isPeerChat
+                    ? AppColors.infoSurface
+                    : AppColors.primarySurface,
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                _isPeerChat ? Icons.person_rounded : Icons.support_agent_rounded,
+                _isPeerChat
+                    ? Icons.person_rounded
+                    : Icons.support_agent_rounded,
                 size: 36,
                 color: _isPeerChat ? AppColors.info : AppColors.primary,
               ),
             ),
             const SizedBox(height: 20),
             Text(
-              hasItemContext ? 'Contact Admin about "$itemTitle"' : (_isPeerChat ? 'Contact the reporter' : 'Start a conversation'),
+              hasItemContext
+                  ? 'Contact Admin about "$itemTitle"'
+                  : (_isPeerChat
+                        ? 'Contact the reporter'
+                        : 'Start a conversation'),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -516,8 +549,8 @@ class _UserChatScreenState extends State<UserChatScreen> {
               hasItemContext
                   ? 'Send a message to admin about "$itemTitle" (ID: $shortItemId).'
                   : (_isPeerChat
-                      ? 'Send a message to the person who reported this item.'
-                      : 'Send a message to our support team. We\'re here to help!'),
+                        ? 'Send a message to the person who reported this item.'
+                        : 'Send a message to our support team. We\'re here to help!'),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 14,
@@ -543,10 +576,7 @@ class _UserChatScreenState extends State<UserChatScreen> {
 // ── Message Bubble ────────────────────────────────────────────────────────
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
-    required this.message,
-    required this.isMe,
-  });
+  const _MessageBubble({required this.message, required this.isMe});
 
   final SupportMessage message;
   final bool isMe;
@@ -708,8 +738,11 @@ class _FullScreenImage extends StatelessWidget {
                     );
                   },
                   errorBuilder: (_, _, _) => const Center(
-                    child: Icon(Icons.broken_image_rounded,
-                        size: 48, color: Colors.white54),
+                    child: Icon(
+                      Icons.broken_image_rounded,
+                      size: 48,
+                      color: Colors.white54,
+                    ),
                   ),
                 ),
               ),
@@ -718,8 +751,11 @@ class _FullScreenImage extends StatelessWidget {
               top: MediaQuery.of(context).padding.top + 8,
               right: 16,
               child: IconButton(
-                icon: const Icon(Icons.close_rounded,
-                    color: Colors.white, size: 28),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
@@ -796,7 +832,11 @@ class _InputBar extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                icon: const Icon(
+                  Icons.send_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 onPressed: onSend,
               ),
             ),

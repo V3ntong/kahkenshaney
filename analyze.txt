@@ -1,7 +1,0 @@
-﻿Analyzing amongapp...                                           
-
-warning - The value of the local variable 'itemId' isn't used. Try removing the variable or using it - lib\screens\user_chat_screen.dart:66:11 - unused_local_variable
-   info - The imported package 'flutter_test' isn't a dependency of the importing package. Try adding a dependency for 'flutter_test' in the 'pubspec.yaml' file - lib\widgets\split_flap_splash.dart:5:8 - depend_on_referenced_packages
-warning - The value of the local variable 'initDone' isn't used. Try removing the variable or using it - lib\widgets\split_flap_splash.dart:355:13 - unused_local_variable
-   info - The import of 'dart:async' is unnecessary because all of the used elements are also provided by the import of 'package:flutter_test/flutter_test.dart'. Try removing the import directive - test\split_flap_splash_test.dart:1:8 - unnecessary_import
-

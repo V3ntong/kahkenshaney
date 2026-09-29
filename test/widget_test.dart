@@ -1,46 +1,127 @@
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:amongapp/main.dart';
-import 'package:amongapp/mainpage.dart';
 import 'package:amongapp/screens/auth/login.dart';
 import 'package:amongapp/screens/auth/signup.dart';
 import 'package:amongapp/widgets/app_button.dart';
 import 'package:amongapp/widgets/otp_input.dart';
 import 'package:amongapp/widgets/password_strength.dart';
 
-void main() {
-  testWidgets('Landing page renders hero, CTA and footer', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: MainPage()));
-    await tester.pumpAndSettle();
-
-    expect(find.text('KAH KEN SHA NEY'), findsWidgets);
-    expect(find.text('Get Started'), findsOneWidget);
-    expect(
-      find.textContaining('KAH KEN SHA NEY. All rights reserved.'),
-      findsOneWidget,
+/// Test double for Firebase core's Pigeon host API.
+///
+/// [initializeCore] reports no pre-existing apps and [initializeApp] echoes
+/// back the requested options, so `MethodChannelFirebase`'s soft options
+/// check passes and [AmongApp] completes its Firebase initialization under
+/// `flutter test`, where the real platform channels never respond.
+class _EchoCoreHostApi implements TestFirebaseCoreHostApi {
+  @override
+  Future<CoreInitializeResponse> initializeApp(
+    String appName,
+    CoreFirebaseOptions initializeAppRequest,
+  ) async {
+    return CoreInitializeResponse(
+      name: appName,
+      options: initializeAppRequest,
+      pluginConstants: <String?, Object?>{},
     );
-  });
+  }
 
-  testWidgets('Get Started opens the Register screen', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: MainPage()));
-    await tester.pumpAndSettle();
+  @override
+  Future<List<CoreInitializeResponse>> initializeCore() async =>
+      <CoreInitializeResponse>[];
 
-    await tester.tap(find.text('Get Started'));
-    await tester.pumpAndSettle();
+  @override
+  Future<CoreFirebaseOptions> optionsFromResource() async =>
+      CoreFirebaseOptions(
+        apiKey: 'test-key',
+        appId: 'test-app',
+        messagingSenderId: 'test-sender',
+        projectId: 'test-project',
+      );
+}
 
-    // Get Started routes to the sign-up flow.
-    expect(find.text('Full Name'), findsOneWidget);
-    expect(find.text('Email Address'), findsOneWidget);
-    expect(find.text('Password'), findsOneWidget);
-    expect(find.text('Confirm Password'), findsOneWidget);
-    expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
+const String _appCheckActivateChannelName =
+    'dev.flutter.pigeon.'
+    'firebase_app_check_platform_interface.'
+    'FirebaseAppCheckHostApi.activate';
+
+/// Registers (or, when [handler] is null, removes) the mock for the Firebase
+/// App Check `activate` Pigeon channel.
+void _registerAppCheckActivateHandler(
+  Future<Object?> Function(Object? message)? handler,
+) {
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockDecodedMessageHandler<Object?>(
+        const BasicMessageChannel<Object?>(
+          _appCheckActivateChannelName,
+          // The App Check Pigeon codec only specializes ints (all Strings/nulls
+          // travel on this channel), so the standard codec is byte-compatible.
+          StandardMessageCodec(),
+        ),
+        handler,
+      );
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Landing page (after splash)', () {
+    // Drive the real entry widget end to end: Firebase initialization is
+    // mocked so AmongApp can progress past its native placeholder, through
+    // the split-flap splash, to the landing page — as it does on a device.
+    setUp(() {
+      TestFirebaseCoreHostApi.setUp(_EchoCoreHostApi());
+      _registerAppCheckActivateHandler((message) async => <Object?>[null]);
+    });
+
+    tearDown(() {
+      TestFirebaseCoreHostApi.setUp(null);
+      _registerAppCheckActivateHandler(null);
+    });
+
+    testWidgets('Landing page renders hero, CTA and footer', (tester) async {
+      await tester.pumpWidget(const AmongApp());
+
+      // Flush the (mocked) Firebase initialization so the splash mounts.
+      await tester.pump();
+
+      // Wait for splash screen to complete
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.text('KAH KEN SHA NEY'), findsWidgets);
+      expect(find.text('Get Started'), findsOneWidget);
+      expect(
+        find.textContaining('KAH KEN SHA NEY. All rights reserved.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Get Started opens the Register screen', (tester) async {
+      await tester.pumpWidget(const AmongApp());
+
+      // Flush the (mocked) Firebase initialization so the splash mounts.
+      await tester.pump();
+
+      // Wait for splash screen to complete
+      await tester.pump(const Duration(milliseconds: 600));
+
+      await tester.tap(find.text('Get Started'));
+      await tester.pumpAndSettle();
+
+      // Get Started routes to the sign-up flow.
+      expect(find.text('Full Name'), findsOneWidget);
+      expect(find.text('Email Address'), findsOneWidget);
+      expect(find.text('Password'), findsOneWidget);
+      expect(find.text('Confirm Password'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
+    });
   });
 
   testWidgets('Login shows validation errors for empty fields', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: LoginScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     await tester.tap(find.text('Login'));
     await tester.pumpAndSettle();
@@ -50,9 +131,7 @@ void main() {
   });
 
   testWidgets('Login rejects an invalid email format', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: LoginScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Email Address'),
@@ -65,9 +144,7 @@ void main() {
   });
 
   testWidgets('Register screen renders all required fields', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SignupScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: SignupScreen()));
 
     expect(find.text('Full Name'), findsOneWidget);
     expect(find.text('Email Address'), findsOneWidget);
@@ -76,10 +153,10 @@ void main() {
     expect(find.widgetWithText(AppButton, 'Create Account'), findsOneWidget);
   });
 
-  testWidgets('Register shows validation errors for empty fields', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SignupScreen()),
-    );
+  testWidgets('Register shows validation errors for empty fields', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: SignupScreen()));
 
     await tester.ensureVisible(
       find.widgetWithText(AppButton, 'Create Account'),
@@ -95,9 +172,7 @@ void main() {
   });
 
   testWidgets('Register rejects mismatched confirm password', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SignupScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: SignupScreen()));
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Full Name'),
@@ -126,8 +201,9 @@ void main() {
     expect(find.text('Passwords do not match.'), findsOneWidget);
   });
 
-  testWidgets('OTP input completes once all six boxes are filled',
-      (tester) async {
+  testWidgets('OTP input completes once all six boxes are filled', (
+    tester,
+  ) async {
     String? completed;
     await tester.pumpWidget(
       MaterialApp(
@@ -150,14 +226,13 @@ void main() {
     expect(completed, '123456');
   });
 
-  testWidgets('OTP input fits on narrow screens without overflowing',
-      (tester) async {
+  testWidgets('OTP input fits on narrow screens without overflowing', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Center(
-            child: OtpInput(onCompleted: (_) {}),
-          ),
+          body: Center(child: OtpInput(onCompleted: (_) {})),
         ),
       ),
     );
@@ -172,9 +247,7 @@ void main() {
   });
 
   testWidgets('Login renders unboxed layout', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: LoginScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     // The animated auth header renders the title uppercased.
     expect(find.text('WELCOME BACK'), findsOneWidget);
@@ -185,17 +258,19 @@ void main() {
     expect(find.text("Don't have an account?"), findsOneWidget);
     expect(find.text('Sign Up'), findsOneWidget);
 
-    final loginY = tester.getTopLeft(find.widgetWithText(AppButton, 'Login')).dy;
-    final passwordY = tester.getTopLeft(find.widgetWithText(TextField, 'Password')).dy;
+    final loginY = tester
+        .getTopLeft(find.widgetWithText(AppButton, 'Login'))
+        .dy;
+    final passwordY = tester
+        .getTopLeft(find.widgetWithText(TextField, 'Password'))
+        .dy;
     final forgotY = tester.getTopLeft(find.text('Forgot Password?')).dy;
     expect(passwordY, lessThan(loginY));
     expect(loginY, lessThan(forgotY));
   });
 
   testWidgets('Login uses clean generic hints', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: LoginScreen()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     expect(find.text('Enter your email'), findsOneWidget);
     expect(find.text('Enter your password'), findsOneWidget);
@@ -203,28 +278,30 @@ void main() {
     expect(find.text('Jane Doe'), findsNothing);
   });
 
-  testWidgets('Register footer is anchored near the bottom and uses clean hints',
-      (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: SignupScreen()),
-    );
+  testWidgets(
+    'Register footer is anchored near the bottom and uses clean hints',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: SignupScreen()));
 
-    expect(find.text('Enter your full name'), findsOneWidget);
-    expect(find.text('surname.name@smctagum.edu.ph'), findsOneWidget);
-    expect(find.text('you@example.com'), findsNothing);
-    expect(find.text('Jane Doe'), findsNothing);
+      expect(find.text('Enter your full name'), findsOneWidget);
+      expect(find.text('surname.name@smctagum.edu.ph'), findsOneWidget);
+      expect(find.text('you@example.com'), findsNothing);
+      expect(find.text('Jane Doe'), findsNothing);
 
-    final registerButtonY =
-        tester.getTopLeft(find.widgetWithText(AppButton, 'Create Account')).dy;
-    final footerY = tester.getTopLeft(find.text('Already have an account?')).dy;
-    expect(footerY, greaterThan(registerButtonY));
-  });
+      final registerButtonY = tester
+          .getTopLeft(find.widgetWithText(AppButton, 'Create Account'))
+          .dy;
+      final footerY = tester
+          .getTopLeft(find.text('Already have an account?'))
+          .dy;
+      expect(footerY, greaterThan(registerButtonY));
+    },
+  );
 
-  testWidgets('Forgot Password opens its screen without exceptions',
-      (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(home: LoginScreen()),
-    );
+  testWidgets('Forgot Password opens its screen without exceptions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     await tester.tap(find.text('Forgot Password?'));
     await tester.pumpAndSettle();
@@ -235,8 +312,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Password strength bar animates smoothly toward its target',
-      (tester) async {
+  testWidgets('Password strength bar animates smoothly toward its target', (
+    tester,
+  ) async {
     var password = 'Abcdefg1!';
     void Function(VoidCallback)? update;
     await tester.pumpWidget(
@@ -254,16 +332,12 @@ void main() {
 
     await tester.pump();
     final initial = tester
-        .widget<LinearProgressIndicator>(
-          find.byType(LinearProgressIndicator),
-        )
+        .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
         .value!;
 
     await tester.pump(const Duration(milliseconds: 400));
     final settled = tester
-        .widget<LinearProgressIndicator>(
-          find.byType(LinearProgressIndicator),
-        )
+        .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
         .value!;
 
     expect(initial, lessThan(0.1));
@@ -273,24 +347,41 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 180));
     final midway = tester
-        .widget<LinearProgressIndicator>(
-          find.byType(LinearProgressIndicator),
-        )
+        .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
         .value!;
     expect(midway, greaterThan(0.0));
     expect(midway, lessThan(1.0));
 
     await tester.pump(const Duration(milliseconds: 400));
     final shrunk = tester
-        .widget<LinearProgressIndicator>(
-          find.byType(LinearProgressIndicator),
-        )
+        .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
         .value!;
     expect(shrunk, closeTo(0.0, 0.05));
   });
 
-  testWidgets('App shows initialization placeholder while Firebase starts',
-      (tester) async {
+  testWidgets('Firebase error screen shows when initialization fails', (
+    tester,
+  ) async {
+    // Firebase core succeeds but App Check activation fails with a channel
+    // error, so AmongApp's FutureBuilder lands in its error state.
+    TestFirebaseCoreHostApi.setUp(_EchoCoreHostApi());
+    _registerAppCheckActivateHandler((message) async => null);
+    addTearDown(() {
+      TestFirebaseCoreHostApi.setUp(null);
+      _registerAppCheckActivateHandler(null);
+    });
+
+    await tester.pumpWidget(const AmongApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Connection Error'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('App shows initialization placeholder while Firebase starts', (
+    tester,
+  ) async {
     await tester.pumpWidget(const AmongApp());
     await tester.pump(const Duration(seconds: 1));
 

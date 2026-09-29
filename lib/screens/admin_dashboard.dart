@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../data/firestore/admin_repository.dart';
+import '../data/firestore/item_repository.dart';
 import '../mainpage.dart';
 import '../models/lost_found_item.dart';
 import '../pages/report_lost_page.dart';
@@ -32,8 +33,18 @@ import 'dashboard.dart';
 import 'item_detail_screen.dart';
 
 const _monthAbbr = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 /// Admin-only Lost & Found control center.
@@ -62,6 +73,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Stream<int>? _adminUnreadStream;
   int _adminUnreadCount = 0;
 
+  /// Live count of reports waiting in the Review Queue (moderation pending),
+  /// surfaced as a badge on the sidebar entry and on the menu icon.
+  int _pendingCount = 0;
+  StreamSubscription<int>? _pendingCountSub;
+
   /// B4 (avatar bug): live copy of the admin's own `users/{uid}` doc so the
   /// sidebar/app-bar avatar and display name refresh after a photo or name
   /// change anywhere — same root cause as A6 (one-shot reads go stale).
@@ -79,6 +95,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _usersStream = _repository!.streamUserCount();
       _usersListStream = _repository!.streamUsers();
       _adminUnreadStream = _repository!.streamAdminUnreadCount();
+      // Dedicated pending query: matches the Review Queue's filter exactly
+      // and avoids re-downloading every item just to count them.
+      _pendingCountSub = ItemRepository()
+          .streamPendingItems()
+          .map((pending) => pending.length)
+          .listen((pending) {
+            if (!mounted) return;
+            setState(() => _pendingCount = pending);
+          }, onError: (_) {});
     } catch (_) {
       _repository = null;
     }
@@ -94,6 +119,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void dispose() {
     _adminUnreadSub?.cancel();
+    _pendingCountSub?.cancel();
     _adminProfileSub?.cancel();
     super.dispose();
   }
@@ -116,13 +142,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           .collection('users')
           .doc(uid)
           .snapshots()
-          .listen(
-        (snap) {
-          if (!mounted) return;
-          setState(() => _adminProfile = snap.exists ? snap.data() : null);
-        },
-        onError: (_) {},
-      );
+          .listen((snap) {
+            if (!mounted) return;
+            setState(() => _adminProfile = snap.exists ? snap.data() : null);
+          }, onError: (_) {});
     } catch (e) {
       // Firebase not initialized (tests/offline) — avatar stays on fallback.
       debugPrint('[AdminDashboard] _watchAdminProfile error: $e');
@@ -241,9 +264,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_auth.isAdminAuthenticated) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final adminName = _adminName();
@@ -258,6 +279,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       adminName: adminName,
       adminEmail: adminEmail,
       unreadCount: _adminUnreadCount,
+      pendingCount: _pendingCount,
       photoUrl: _adminPhotoUrl,
     );
 
@@ -269,6 +291,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             backgroundColor: AppColors.background,
             appBar: AppBar(
               title: const Text('Admin Dashboard'),
+              leading: Builder(
+                builder: (context) => IconButton(
+                  tooltip: 'Open menu',
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.menu),
+                      if (_pendingCount > 0)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 16),
+                            height: 16,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Center(
+                              child: Text(
+                                _pendingCount > 9 ? '9+' : '$_pendingCount',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  height: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
               actions: [
                 IconButton(
                   icon: Stack(
@@ -311,10 +370,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           body: Row(
             children: [
               sidebar,
-              Container(
-                width: 1,
-                color: AppColors.cardBorder,
-              ),
+              Container(width: 1, color: AppColors.cardBorder),
               Expanded(child: _buildSectionBody(context, sections, adminName)),
             ],
           ),
@@ -349,7 +405,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           onNotice: _showNotice,
         );
       case 4:
-        return _UsersSection(usersStream: _usersListStream, adminRepository: _repository);
+        return _UsersSection(
+          usersStream: _usersListStream,
+          adminRepository: _repository,
+        );
       case 5:
         return AdminInboxScreen(adminUid: _auth.currentUser?.uid ?? '');
       case 6:
@@ -363,10 +422,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return _SettingsSection(onNotice: _showNotice);
       default:
         final item = sections[_selectedIndex];
-        return _SectionPlaceholder(
-          icon: item.icon,
-          title: item.label,
-        );
+        return _SectionPlaceholder(icon: item.icon, title: item.label);
     }
   }
 
@@ -394,7 +450,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 // ── Sidebar ────────────────────────────────────────────────────────────────
 
 class _NavItem {
-  const _NavItem({required this.label, required this.icon, this.logout = false});
+  const _NavItem({
+    required this.label,
+    required this.icon,
+    this.logout = false,
+  });
 
   final String label;
   final IconData icon;
@@ -409,6 +469,7 @@ class _Sidebar extends StatelessWidget {
     required this.adminName,
     required this.adminEmail,
     this.unreadCount = 0,
+    this.pendingCount = 0,
     this.photoUrl,
   });
 
@@ -419,8 +480,17 @@ class _Sidebar extends StatelessWidget {
   final String adminEmail;
   final int unreadCount;
 
+  /// Reports waiting in the Review Queue — badge on that sidebar entry.
+  final int pendingCount;
+
   /// B4: live admin avatar URL (null shows the initial placeholder).
   final String? photoUrl;
+
+  /// Index of the Review Queue entry in [_sections].
+  static const int reviewQueueIndex = 1;
+
+  /// Index of the Messages entry in [_sections].
+  static const int messagesIndex = 5;
 
   @override
   Widget build(BuildContext context) {
@@ -474,7 +544,8 @@ class _Sidebar extends StatelessWidget {
               _SidebarItem(
                 item: sections[i],
                 selected: selectedIndex == i,
-                unreadCount: i == 4 ? unreadCount : 0, // Messages index = 4
+                unreadCount: i == messagesIndex ? unreadCount : 0,
+                pendingCount: i == reviewQueueIndex ? pendingCount : 0,
                 onTap: () => onSelect(i),
               ),
             ],
@@ -517,6 +588,7 @@ class _SidebarItem extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.unreadCount = 0,
+    this.pendingCount = 0,
   });
 
   final _NavItem item;
@@ -524,13 +596,17 @@ class _SidebarItem extends StatelessWidget {
   final VoidCallback onTap;
   final int unreadCount;
 
+  /// Reports waiting in the Review Queue (amber pill, shown in place of the
+  /// unread pill since an entry never shows both).
+  final int pendingCount;
+
   @override
   Widget build(BuildContext context) {
     final color = item.logout
         ? AppColors.error
         : selected
-            ? AppColors.primary
-            : AppColors.textSecondary;
+        ? AppColors.primary
+        : AppColors.textSecondary;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -546,7 +622,9 @@ class _SidebarItem extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: selected
-                  ? const Border(left: BorderSide(color: AppColors.primary, width: 3))
+                  ? const Border(
+                      left: BorderSide(color: AppColors.primary, width: 3),
+                    )
                   : null,
             ),
             child: Row(
@@ -563,9 +641,35 @@ class _SidebarItem extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (unreadCount > 0)
+                if (pendingCount > 0)
                   Container(
-                    constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        pendingCount > 99 ? '99+' : '$pendingCount',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (unreadCount > 0)
+                  Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     decoration: BoxDecoration(
                       color: AppColors.error,
@@ -676,8 +780,8 @@ class _DashboardOverview extends StatelessWidget {
         final statCardWidth = w >= 1180
             ? (w - 48) / 4
             : w >= 640
-                ? (w - 16) / 2
-                : w;
+            ? (w - 16) / 2
+            : w;
         final chartCardWidth = w >= 1000 ? (w - 16) / 2 : w;
 
         return SingleChildScrollView(
@@ -687,8 +791,7 @@ class _DashboardOverview extends StatelessWidget {
             children: [
               _Header(adminName: adminName),
               const SizedBox(height: 20),
-              if (!repositoryAvailable)
-                const _UnavailableNotice(),
+              if (!repositoryAvailable) const _UnavailableNotice(),
               if (itemsStream == null || usersStream == null) ...[
                 const SizedBox(height: 16),
                 const _EmptyPanel(
@@ -715,7 +818,10 @@ class _DashboardOverview extends StatelessWidget {
                               runSpacing: 16,
                               children: [
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(0, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    0,
+                                    perItemMs: 80,
+                                  ),
                                   child: _StatCard(
                                     width: statCardWidth,
                                     label: 'Lost Items',
@@ -729,7 +835,10 @@ class _DashboardOverview extends StatelessWidget {
                                   ),
                                 ),
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(1, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    1,
+                                    perItemMs: 80,
+                                  ),
                                   child: _StatCard(
                                     width: statCardWidth,
                                     label: 'Found Items',
@@ -743,7 +852,10 @@ class _DashboardOverview extends StatelessWidget {
                                   ),
                                 ),
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(2, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    2,
+                                    perItemMs: 80,
+                                  ),
                                   child: _StatCard(
                                     width: statCardWidth,
                                     label: 'Users',
@@ -757,7 +869,10 @@ class _DashboardOverview extends StatelessWidget {
                                   ),
                                 ),
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(3, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    3,
+                                    perItemMs: 80,
+                                  ),
                                   child: _StatCard(
                                     width: statCardWidth,
                                     label: 'Pending Reports',
@@ -778,7 +893,10 @@ class _DashboardOverview extends StatelessWidget {
                               runSpacing: 16,
                               children: [
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(4, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    4,
+                                    perItemMs: 80,
+                                  ),
                                   child: _ChartCard(
                                     width: chartCardWidth,
                                     title: 'Reports Overview',
@@ -786,7 +904,10 @@ class _DashboardOverview extends StatelessWidget {
                                   ),
                                 ),
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(5, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    5,
+                                    perItemMs: 80,
+                                  ),
                                   child: _ChartCard(
                                     width: chartCardWidth,
                                     title: 'Reports by Category',
@@ -800,7 +921,10 @@ class _DashboardOverview extends StatelessWidget {
                             ),
                             const SizedBox(height: 20),
                             FadeSlideInWidget(
-                              delay: FadeSlideInWidget.staggerDelay(6, perItemMs: 80),
+                              delay: FadeSlideInWidget.staggerDelay(
+                                6,
+                                perItemMs: 80,
+                              ),
                               child: _RecentReportsCard(
                                 items: data.recent,
                                 onNotice: onNotice,
@@ -812,14 +936,20 @@ class _DashboardOverview extends StatelessWidget {
                               runSpacing: 16,
                               children: [
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(7, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    7,
+                                    perItemMs: 80,
+                                  ),
                                   child: SizedBox(
                                     width: chartCardWidth,
                                     child: const _AdminActionsCard(),
                                   ),
                                 ),
                                 FadeSlideInWidget(
-                                  delay: FadeSlideInWidget.staggerDelay(8, perItemMs: 80),
+                                  delay: FadeSlideInWidget.staggerDelay(
+                                    8,
+                                    perItemMs: 80,
+                                  ),
                                   child: SizedBox(
                                     width: chartCardWidth,
                                     child: const _TechStackCard(),
@@ -1050,9 +1180,15 @@ class _DashboardData {
   static List<_CategorySlice> _buildCategories(List<LostFoundItem> items) {
     if (items.isEmpty) return const [];
     const palette = [
-      Color(0xFF2563EB), Color(0xFF22C55E), Color(0xFFF59E0B),
-      Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF14B8A6),
-      Color(0xFFF97316), Color(0xFF0EA5E9), Color(0xFFEC4899),
+      Color(0xFF2563EB),
+      Color(0xFF22C55E),
+      Color(0xFFF59E0B),
+      Color(0xFFEF4444),
+      Color(0xFF8B5CF6),
+      Color(0xFF14B8A6),
+      Color(0xFFF97316),
+      Color(0xFF0EA5E9),
+      Color(0xFFEC4899),
       Color(0xFF64748B),
     ];
 
@@ -1118,9 +1254,7 @@ class _DashboardData {
         t.contains('textbook')) {
       return 'Books';
     }
-    if (t.contains('bag') ||
-        t.contains('backpack') ||
-        t.contains('purse')) {
+    if (t.contains('bag') || t.contains('backpack') || t.contains('purse')) {
       return 'Bags';
     }
     if (t.contains('glass') ||
@@ -1369,10 +1503,7 @@ class _LineChartPainter extends CustomPainter {
     final gridPaint = Paint()
       ..color = AppColors.border
       ..strokeWidth = 1;
-    final labelStyle = TextStyle(
-      color: AppColors.textTertiary,
-      fontSize: 10,
-    );
+    final labelStyle = TextStyle(color: AppColors.textTertiary, fontSize: 10);
 
     for (var i = 0; i <= 4; i++) {
       final y = _padTop + chartH * (1 - i / 4);
@@ -1399,10 +1530,7 @@ class _LineChartPainter extends CustomPainter {
         text: TextSpan(text: points[i].label, style: labelStyle),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(
-        canvas,
-        Offset(x - tp.width / 2, _padTop + chartH + 4),
-      );
+      tp.paint(canvas, Offset(x - tp.width / 2, _padTop + chartH + 4));
     }
 
     if (points.isEmpty) return;
@@ -1457,10 +1585,10 @@ class _LineChartPainter extends CustomPainter {
     final nice = norm <= 1
         ? 1.0
         : norm <= 2
-            ? 2.0
-            : norm <= 5
-                ? 5.0
-                : 10.0;
+        ? 2.0
+        : norm <= 5
+        ? 5.0
+        : 10.0;
     return nice * mag;
   }
 
@@ -1499,9 +1627,7 @@ class _CategoryDonut extends StatelessWidget {
             SizedBox(
               width: chartSize,
               height: chartSize,
-              child: CustomPaint(
-                painter: _DonutChartPainter(slices: slices),
-              ),
+              child: CustomPaint(painter: _DonutChartPainter(slices: slices)),
             ),
             ConstrainedBox(
               constraints: BoxConstraints(
@@ -1573,8 +1699,7 @@ class _DonutChartPainter extends CustomPainter {
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 
-  double _total() =>
-      slices.fold(0.0, (total, s) => total + s.value);
+  double _total() => slices.fold(0.0, (total, s) => total + s.value);
 
   @override
   bool shouldRepaint(_DonutChartPainter oldDelegate) =>
@@ -1754,7 +1879,10 @@ class _RecentReportsCard extends StatelessWidget {
               child: Center(
                 child: Text(
                   'No reports submitted yet.',
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
             )
@@ -1812,10 +1940,7 @@ class _ReportRow extends StatelessWidget {
               ),
             ),
             SizedBox(width: 72, child: _TypeBadge(kind: item.kind)),
-            SizedBox(
-              width: 96,
-              child: _StatusBadge(status: item.status),
-            ),
+            SizedBox(width: 96, child: _StatusBadge(status: item.status)),
             SizedBox(
               width: 70,
               child: Text(
@@ -1849,33 +1974,10 @@ class _ReportRow extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ItemDetailScreen(
-          item: item,
-          heroTagPrefix: 'admin_recent',
-        ),
+        builder: (_) =>
+            ItemDetailScreen(item: item, heroTagPrefix: 'admin_recent'),
       ),
     );
-  }
-}
-
-String _statusLabel(ItemStatus status) {
-  switch (status) {
-    case ItemStatus.open:
-      return 'Pending';
-    case ItemStatus.pendingVerification:
-      return 'Pending Verification';
-    case ItemStatus.verified:
-      return 'Verified';
-    case ItemStatus.matched:
-      return 'Matched';
-    case ItemStatus.pendingClaim:
-      return 'Pending Claim';
-    case ItemStatus.claimed:
-      return 'Claimed';
-    case ItemStatus.resolved:
-      return 'Resolved';
-    case ItemStatus.closed:
-      return 'Closed';
   }
 }
 
@@ -1889,11 +1991,7 @@ class _TypeBadge extends StatelessWidget {
     final lost = kind == ItemKind.lost;
     final color = lost ? AppColors.error : AppColors.success;
     final tint = lost ? AppColors.errorSurface : AppColors.successSurface;
-    return _Badge(
-      label: lost ? 'Lost' : 'Found',
-      color: color,
-      tint: tint,
-    );
+    return _Badge(label: lost ? 'Lost' : 'Found', color: color, tint: tint);
   }
 }
 
@@ -2013,8 +2111,7 @@ class _AdminActionsCard extends StatelessWidget {
             icon: Icons.inventory_2_rounded,
             color: AppColors.success,
             title: 'Report Found Item',
-            subtitle:
-                'File a found item handed directly to admin/staff.',
+            subtitle: 'File a found item handed directly to admin/staff.',
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SubmitFoundPage()),
@@ -2082,10 +2179,11 @@ class _ActionTile extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          onTap: onTap ??
-              () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('$title is coming soon.')),
-              ),
+          onTap:
+              onTap ??
+              () => ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('$title is coming soon.'))),
           borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -2155,12 +2253,7 @@ class _TechStackCard extends StatelessWidget {
       'Authentication',
       Color(0xFFF59E0B),
     ),
-    (
-      Icons.storage_rounded,
-      'Cloud Firestore',
-      'Database',
-      Color(0xFF22C55E),
-    ),
+    (Icons.storage_rounded, 'Cloud Firestore', 'Database', Color(0xFF22C55E)),
     (
       Icons.cloud_upload_outlined,
       'Firebase Storage',
@@ -2173,12 +2266,7 @@ class _TechStackCard extends StatelessWidget {
       'Notifications',
       Color(0xFFEF4444),
     ),
-    (
-      Icons.code_rounded,
-      'Cloud Functions',
-      'Backend Logic',
-      Color(0xFF14B8A6),
-    ),
+    (Icons.code_rounded, 'Cloud Functions', 'Backend Logic', Color(0xFF14B8A6)),
     (
       Icons.auto_awesome_rounded,
       'Gemini API',
@@ -2241,7 +2329,11 @@ class _TechStackCard extends StatelessWidget {
 }
 
 class _PanelCard extends StatelessWidget {
-  const _PanelCard({required this.title, required this.icon, required this.child});
+  const _PanelCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
 
   final String title;
   final IconData icon;
@@ -2285,7 +2377,10 @@ class _PanelCard extends StatelessWidget {
 // ── Users section ──────────────────────────────────────────────────────────
 
 class _UsersSection extends StatelessWidget {
-  const _UsersSection({required this.usersStream, required this.adminRepository});
+  const _UsersSection({
+    required this.usersStream,
+    required this.adminRepository,
+  });
 
   final Stream<List<Map<String, dynamic>>>? usersStream;
   final AdminRepository? adminRepository;
@@ -2323,7 +2418,10 @@ class _UsersSection extends StatelessWidget {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
@@ -2332,7 +2430,11 @@ class _UsersSection extends StatelessWidget {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.people_alt_rounded, size: 15, color: AppColors.textSecondary),
+                          Icon(
+                            Icons.people_alt_rounded,
+                            size: 15,
+                            color: AppColors.textSecondary,
+                          ),
                           SizedBox(width: 6),
                           Text(
                             'All users',
@@ -2355,7 +2457,9 @@ class _UsersSection extends StatelessWidget {
                       return const Center(
                         child: Padding(
                           padding: EdgeInsets.all(40),
-                          child: CircularProgressIndicator(color: AppColors.primary),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
                         ),
                       );
                     }
@@ -2388,9 +2492,14 @@ class _UsersSection extends StatelessWidget {
                       child: Column(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             decoration: const BoxDecoration(
-                              border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+                              border: Border(
+                                bottom: BorderSide(color: AppColors.cardBorder),
+                              ),
                             ),
                             child: Row(
                               children: [
@@ -2426,7 +2535,11 @@ class _UsersSection extends StatelessWidget {
                           for (var i = 0; i < users.length; i++) ...[
                             _UserRow(user: users[i]),
                             if (i != users.length - 1)
-                              const Divider(height: 1, indent: 72, color: AppColors.border),
+                              const Divider(
+                                height: 1,
+                                indent: 72,
+                                color: AppColors.border,
+                              ),
                           ],
                         ],
                       ),
@@ -2483,20 +2596,23 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
       if (!mounted) return;
       final String message;
       if (!result.emailSent) {
-        message = 'Invitation created for $email — the email could not be '
+        message =
+            'Invitation created for $email — the email could not be '
             'delivered, but they will still see the prompt inside the app.';
       } else if (result.resent) {
         message = 'Invitation to $email was refreshed and re-sent';
       } else {
         message = 'Invitation sent to $email';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not send invitation: ${AdminApi.messageFor(e)}')),
+        SnackBar(
+          content: Text('Could not send invitation: ${AdminApi.messageFor(e)}'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _inviting = false);
@@ -2525,7 +2641,11 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
                   color: AppColors.primarySurface,
                   borderRadius: BorderRadius.circular(11),
                 ),
-                child: const Icon(Icons.admin_panel_settings_rounded, size: 19, color: AppColors.primary),
+                child: const Icon(
+                  Icons.admin_panel_settings_rounded,
+                  size: 19,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -2544,7 +2664,11 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
           const Text(
             'Invite someone to help manage the app by sending an email invitation. '
             'They accept from inside the app with their own account.',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.45),
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.45,
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -2570,7 +2694,10 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Icon(Icons.person_add_alt_1_rounded, size: 18),
                   label: const Text('Send invite'),
@@ -2582,10 +2709,7 @@ class _AdminManagementCardState extends State<_AdminManagementCard> {
             ],
           ),
           const SizedBox(height: 16),
-          _ActiveAdminsList(
-            adminRepository: widget.adminRepository,
-            api: _api,
-          ),
+          _ActiveAdminsList(adminRepository: widget.adminRepository, api: _api),
           const SizedBox(height: 14),
           _PendingInvitesList(
             adminRepository: widget.adminRepository,
@@ -2622,10 +2746,7 @@ class _ListLabel extends StatelessWidget {
 
 /// Users that currently hold administrator access (`isAdmin: true`).
 class _ActiveAdminsList extends StatelessWidget {
-  const _ActiveAdminsList({
-    required this.adminRepository,
-    required this.api,
-  });
+  const _ActiveAdminsList({required this.adminRepository, required this.api});
 
   final AdminRepository? adminRepository;
   final AdminApi api;
@@ -2669,9 +2790,9 @@ class _ActiveAdminsList extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AdminApi.messageFor(e))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(AdminApi.messageFor(e))));
       }
     }
   }
@@ -2777,7 +2898,10 @@ class _ActiveAdminsList extends StatelessWidget {
                     ),
                     IconButton(
                       onPressed: () => _removeAdmin(context, admin),
-                      icon: const Icon(Icons.person_remove_alt_1_rounded, size: 18),
+                      icon: const Icon(
+                        Icons.person_remove_alt_1_rounded,
+                        size: 18,
+                      ),
                       color: AppColors.textTertiary,
                       tooltip: 'Remove admin',
                       visualDensity: VisualDensity.compact,
@@ -2806,10 +2930,7 @@ class _ActiveAdminsList extends StatelessWidget {
 
 /// Invitations that have been sent but not yet accepted.
 class _PendingInvitesList extends StatelessWidget {
-  const _PendingInvitesList({
-    required this.adminRepository,
-    required this.api,
-  });
+  const _PendingInvitesList({required this.adminRepository, required this.api});
 
   final AdminRepository? adminRepository;
   final AdminApi api;
@@ -2838,7 +2959,10 @@ class _PendingInvitesList extends StatelessWidget {
     }
   }
 
-  Future<void> _revoke(BuildContext context, Map<String, dynamic> invite) async {
+  Future<void> _revoke(
+    BuildContext context,
+    Map<String, dynamic> invite,
+  ) async {
     final email = (invite['email'] as String?) ?? '';
     if (email.isEmpty) return;
 
@@ -2870,9 +2994,9 @@ class _PendingInvitesList extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AdminApi.messageFor(e))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(AdminApi.messageFor(e))));
       }
     }
   }
@@ -2985,8 +3109,8 @@ class _UserRow extends StatelessWidget {
     final name = (displayName != null && displayName.isNotEmpty)
         ? displayName
         : email.isNotEmpty
-            ? email.split('@').first
-            : 'User';
+        ? email.split('@').first
+        : 'User';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -2994,7 +3118,9 @@ class _UserRow extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: isAdmin ? AppColors.primarySurface : AppColors.surfaceVariant,
+            backgroundColor: isAdmin
+                ? AppColors.primarySurface
+                : AppColors.surfaceVariant,
             child: Text(
               name[0].toUpperCase(),
               style: TextStyle(
@@ -3027,7 +3153,10 @@ class _UserRow extends StatelessWidget {
                     if (isAdmin) ...[
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primarySurface,
                           borderRadius: BorderRadius.circular(6),
@@ -3123,23 +3252,23 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
           .doc(widget.adminUid)
           .snapshots()
           .listen(
-        (doc) {
-          if (!mounted || !doc.exists || doc.data() == null) return;
-          final data = doc.data()!;
-          setState(() {
-            _photoUrl = data['photoUrl'] as String?;
-            // Don't clobber fields being edited right now.
-            if (!_editing) {
-              _nameCtrl.text =
-                  (data['displayName'] as String?) ?? widget.adminName;
-              _bioCtrl.text = (data['bio'] as String?) ?? '';
-            }
-          });
-        },
-        onError: (e) {
-          debugPrint('[AdminProfile] profile stream error: $e');
-        },
-      );
+            (doc) {
+              if (!mounted || !doc.exists || doc.data() == null) return;
+              final data = doc.data()!;
+              setState(() {
+                _photoUrl = data['photoUrl'] as String?;
+                // Don't clobber fields being edited right now.
+                if (!_editing) {
+                  _nameCtrl.text =
+                      (data['displayName'] as String?) ?? widget.adminName;
+                  _bioCtrl.text = (data['bio'] as String?) ?? '';
+                }
+              });
+            },
+            onError: (e) {
+              debugPrint('[AdminProfile] profile stream error: $e');
+            },
+          );
     } catch (e) {
       // Firebase not initialized (tests/offline) — keep initial values.
       debugPrint('[AdminProfile] _watchProfile error: $e');
@@ -3154,21 +3283,21 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
           .collection('users')
           .doc(widget.adminUid)
           .update({
-        'displayName': _nameCtrl.text.trim(),
-        'bio': _bioCtrl.text.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+            'displayName': _nameCtrl.text.trim(),
+            'bio': _bioCtrl.text.trim(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
       if (mounted) {
         setState(() => _editing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Profile updated')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -3183,8 +3312,9 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
     );
     if (file == null || !mounted) return;
     try {
-      final ref = FirebaseStorage.instance
-          .ref('profiles/${widget.adminUid}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final ref = FirebaseStorage.instance.ref(
+        'profiles/${widget.adminUid}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
       await ref.putFile(
         file,
         SettableMetadata(
@@ -3199,9 +3329,9 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
       setState(() => _photoUrl = url);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update avatar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update avatar: $e')));
       }
     }
   }
@@ -3225,220 +3355,227 @@ class _AdminProfileSectionState extends State<_AdminProfileSection> {
             ),
             const SizedBox(height: 20),
             Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.cardBorder),
-              boxShadow: AppColors.softShadow,
-            ),
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: _pickAvatar,
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: _photoUrl == null
-                              ? AppColors.heroGradient
-                              : null,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.25),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: _photoUrl != null
-                              ? CachedNetworkImage(
-                                  imageUrl: _photoUrl!,
-                                  fit: BoxFit.cover,
-                                  width: 96,
-                                  height: 96,
-                                  placeholder: (_, _) => const Center(
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  ),
-                                  errorWidget: (_, _, _) => const Icon(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.cardBorder),
+                boxShadow: AppColors.softShadow,
+              ),
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: _pickAvatar,
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: _photoUrl == null
+                                ? AppColors.heroGradient
+                                : null,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.25,
+                                ),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: _photoUrl != null
+                                ? CachedNetworkImage(
+                                    imageUrl: _photoUrl!,
+                                    fit: BoxFit.cover,
+                                    width: 96,
+                                    height: 96,
+                                    placeholder: (_, _) => const Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    errorWidget: (_, _, _) => const Icon(
+                                      Icons.person_rounded,
+                                      size: 44,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
                                     Icons.person_rounded,
                                     size: 44,
                                     color: Colors.white,
                                   ),
-                                )
-                              : const Icon(
-                                  Icons.person_rounded,
-                                  size: 44,
-                                  color: Colors.white,
-                                ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          width: 30,
-                          height: 30,
-                          decoration: const BoxDecoration(
-                            color: AppColors.surface,
-                            shape: BoxShape.circle,
-                            boxShadow: AppColors.softShadow,
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt_rounded,
-                            size: 17,
-                            color: AppColors.textPrimary,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (!_editing) ...[
-                  Text(
-                    _nameCtrl.text.isNotEmpty ? _nameCtrl.text : 'Admin',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.adminEmail,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  if (_bioCtrl.text.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      _bioCtrl.text,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: 200,
-                    child: OutlinedButton(
-                      onPressed: () => setState(() => _editing = true),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textPrimary,
-                        side: const BorderSide(color: AppColors.border),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: const BoxDecoration(
+                              color: AppColors.surface,
+                              shape: BoxShape.circle,
+                              boxShadow: AppColors.softShadow,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt_rounded,
+                              size: 17,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
                         ),
-                        textStyle: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      child: const Text('Edit Profile'),
-                    ),
-                  ),
-                ] else ...[
-                  TextField(
-                    controller: _nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Display Name',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _bioCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Bio',
-                      hintText: 'Tell us about yourself',
-                      prefixIcon: Icon(Icons.info_outline_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => setState(() => _editing = false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textSecondary,
-                          side: const BorderSide(color: AppColors.border),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text('Cancel'),
+                  if (!_editing) ...[
+                    Text(
+                      _nameCtrl.text.isNotEmpty ? _nameCtrl.text : 'Admin',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
                       ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: _saving ? null : _save,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.adminEmail,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (_bioCtrl.text.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _bioCtrl.text,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
                         ),
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Save'),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: 200,
+                      child: OutlinedButton(
+                        onPressed: () => setState(() => _editing = true),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: const BorderSide(color: AppColors.border),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const Text('Edit Profile'),
+                      ),
+                    ),
+                  ] else ...[
+                    TextField(
+                      controller: _nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Display Name',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _bioCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Bio',
+                        hintText: 'Tell us about yourself',
+                        prefixIcon: Icon(Icons.info_outline_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => setState(() => _editing = false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.textSecondary,
+                            side: const BorderSide(color: AppColors.border),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: _saving ? null : _save,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          // B4: mirror the user profile's "Found" / "Lost" sections for the
-          // admin's own reports. Counts come from the live items stream, so
-          // filing a report (B2) increments them immediately.
-          StreamBuilder<List<LostFoundItem>>(
-            stream: widget.itemsStream,
-            builder: (context, snapshot) {
-              final ownItems = (snapshot.data ?? const <LostFoundItem>[])
-                  .where((item) => item.ownerUid == widget.adminUid)
-                  .toList();
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _AdminOwnItemsSection(
-                    title: 'Found',
-                    kind: ItemKind.found,
-                    items: ownItems,
-                  ),
-                  _AdminOwnItemsSection(
-                    title: 'Lost',
-                    kind: ItemKind.lost,
-                    items: ownItems,
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
+            // B4: mirror the user profile's "Found" / "Lost" sections for the
+            // admin's own reports. Counts come from the live items stream, so
+            // filing a report (B2) increments them immediately.
+            StreamBuilder<List<LostFoundItem>>(
+              stream: widget.itemsStream,
+              builder: (context, snapshot) {
+                final ownItems = (snapshot.data ?? const <LostFoundItem>[])
+                    .where((item) => item.ownerUid == widget.adminUid)
+                    .toList();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _AdminOwnItemsSection(
+                      title: 'Found',
+                      kind: ItemKind.found,
+                      items: ownItems,
+                    ),
+                    _AdminOwnItemsSection(
+                      title: 'Lost',
+                      kind: ItemKind.lost,
+                      items: ownItems,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3481,10 +3618,7 @@ class _AdminOwnItemsSection extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
@@ -3582,9 +3716,9 @@ class _SettingsSectionState extends State<_SettingsSection> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Migration failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Migration failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _migrating = false);
@@ -3607,7 +3741,11 @@ class _SettingsSectionState extends State<_SettingsSection> {
                   color: AppColors.primarySurface,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Icon(Icons.settings_rounded, size: 32, color: AppColors.primary),
+                child: const Icon(
+                  Icons.settings_rounded,
+                  size: 32,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(height: 20),
               const Text(
@@ -3630,7 +3768,9 @@ class _SettingsSectionState extends State<_SettingsSection> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.sync_rounded),
-                  label: Text(_migrating ? 'Migrating...' : 'Run Moderation Migration'),
+                  label: Text(
+                    _migrating ? 'Migrating...' : 'Run Moderation Migration',
+                  ),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -3730,7 +3870,8 @@ class _ReportMetrics {
       final created = item.createdAt;
       if (created == null) continue;
 
-      final matchedAt = _firstStatusChange(item, ItemStatus.matched.name) ??
+      final matchedAt =
+          _firstStatusChange(item, ItemStatus.matched.name) ??
           _firstStatusChange(item, ItemStatus.claimed.name);
       if (matchedAt != null && matchedAt.isAfter(created)) {
         matchMillis += matchedAt.difference(created).inMilliseconds;
@@ -3749,10 +3890,12 @@ class _ReportMetrics {
       resolved: resolved,
       open: open,
       claims: claims,
-      resolutionRate:
-          items.isEmpty ? 0 : ((resolved * 100) / items.length).round(),
-      avgMatchHours:
-          matchSamples == 0 ? null : (matchMillis / matchSamples / 3600000).round(),
+      resolutionRate: items.isEmpty
+          ? 0
+          : ((resolved * 100) / items.length).round(),
+      avgMatchHours: matchSamples == 0
+          ? null
+          : (matchMillis / matchSamples / 3600000).round(),
       avgResolveHours: resolveSamples == 0
           ? null
           : (resolveMillis / resolveSamples / 3600000).round(),
@@ -3810,7 +3953,9 @@ class _ReportsSectionState extends State<_ReportsSection> {
     // Items without a creation timestamp can't be placed in time, so they are
     // kept rather than silently dropped from the totals.
     return items
-        .where((item) => item.createdAt == null || item.createdAt!.isAfter(cutoff))
+        .where(
+          (item) => item.createdAt == null || item.createdAt!.isAfter(cutoff),
+        )
         .toList();
   }
 
@@ -3822,8 +3967,8 @@ class _ReportsSectionState extends State<_ReportsSection> {
         final statCardWidth = w >= 1180
             ? (w - 48) / 4
             : w >= 640
-                ? (w - 16) / 2
-                : w;
+            ? (w - 16) / 2
+            : w;
         final chartCardWidth = w >= 1000 ? (w - 16) / 2 : w;
 
         return SingleChildScrollView(
@@ -3836,8 +3981,7 @@ class _ReportsSectionState extends State<_ReportsSection> {
                 onRangeChanged: (range) => setState(() => _range = range),
               ),
               const SizedBox(height: 20),
-              if (!widget.repositoryAvailable)
-                const _UnavailableNotice(),
+              if (!widget.repositoryAvailable) const _UnavailableNotice(),
               if (widget.itemsStream == null)
                 const _EmptyPanel(
                   icon: Icons.cloud_off_rounded,
@@ -3857,7 +4001,8 @@ class _ReportsSectionState extends State<_ReportsSection> {
                           const SizedBox(height: 16),
                           _EmptyPanel(
                             icon: Icons.receipt_long_rounded,
-                            title: 'No reports in ${_range.label.toLowerCase()}',
+                            title:
+                                'No reports in ${_range.label.toLowerCase()}',
                             message:
                                 'Try a wider date range, or check back once '
                                 'new reports come in.',

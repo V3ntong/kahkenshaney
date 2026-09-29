@@ -85,10 +85,7 @@ class _OwnItemsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ProfileProvider>(
       builder: (context, provider, _) {
-        final items = provider.ownItems
-            .where((i) => i.kind == kind)
-            .toList();
-        if (items.isEmpty) return const SizedBox.shrink();
+        final items = provider.ownItems.where((i) => i.kind == kind).toList();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,31 +103,49 @@ class _OwnItemsSection extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return ItemGridCard(
-                  item: item,
-                  heroTagPrefix: 'profile_${kind.name}',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ItemDetailScreen(
-                          item: item,
-                          heroTagPrefix: 'profile_${kind.name}',
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'No ${title.toLowerCase()} reports yet.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  // ItemGridCard uses an Expanded image panel, so it must be
+                  // given a bounded height — an unbounded list child throws a
+                  // RenderFlex error and the card disappears from the screen.
+                  return SizedBox(
+                    height: 240,
+                    child: ItemGridCard(
+                      item: item,
+                      heroTagPrefix: 'profile_${kind.name}',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ItemDetailScreen(
+                              item: item,
+                              heroTagPrefix: 'profile_${kind.name}',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
             const SizedBox(height: 8),
           ],
         );
